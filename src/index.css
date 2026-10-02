@@ -1,0 +1,24 @@
+@import url("https://cdn.jsdelivr.net/gh/sunn-us/SUIT/fonts/variable/woff2/SUIT-Variable.css");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "SUIT Variable", "SUIT", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+
+  --color-ink: #1b2a4a;       /* 본문, 주요 버튼 */
+  --color-ink-soft: #5b6680;  /* 보조 텍스트 */
+  --color-paper: #f4f6f9;     /* 배경 */
+  --color-line: #dce1ea;      /* 테두리 */
+  --color-mark: #ffd43b;      /* 형광펜: 선택한 시간·날짜 */
+  --color-mark-deep: #e0a800;
+  --color-sat: #2f6fd6;
+  --color-sun: #d64545;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-paper text-ink font-sans antialiased;
+  word-break: keep-all;
+}
