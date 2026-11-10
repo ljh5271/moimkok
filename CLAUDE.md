@@ -7,7 +7,7 @@
 ## 기술 스택
 - React 19 (Vite 8) + Tailwind CSS v4 (@tailwindcss/vite, 설정 파일 없이 src/index.css의 @theme 사용)
 - react-router-dom 7
-- Supabase (DB) — 3주차 연동 예정
+- Supabase (DB) — @supabase/supabase-js, 테이블 직접 접근 없이 RPC 함수로만 호출 (supabase/schema.sql)
 - Claude API: 반드시 서버리스 함수(Vercel Functions)에서 호출. API 키를 프론트에 노출하지 않는다.
 - 배포: Vercel
 
@@ -28,10 +28,14 @@ src/
 ├── main.jsx              # BrowserRouter + EventStoreProvider
 ├── App.jsx               # 라우트 + 공통 레이아웃(헤더)
 ├── index.css             # Tailwind import, @theme 색상·폰트 토큰
-├── store/EventStore.jsx  # 메모리 상태 (Context + useReducer)
+├── lib/supabase.js       # Supabase 클라이언트 (anon 키, 세션 저장 끔)
+├── store/EventStore.jsx  # RPC 호출 + 불러온 행사 캐시 (Context + useReducer)
 ├── pages/                # Home, CreateEvent, EventCreated, Vote, Admin, NotFound
-├── components/           # DatePicker, TimeRangeSelect, TimeGrid, EventSummary, CopyLinkBox, styles.js
-└── utils/                # id.js, time.js, clipboard.js
+├── components/           # DatePicker, TimeRangeSelect, TimeGrid, EventSummary, CopyLinkBox, LoadState, styles.js
+└── utils/                # time.js, clipboard.js, adminKeys.js(관리키 localStorage)
+supabase/
+├── schema.sql            # 테이블·RLS·RPC. SQL Editor에서 실행 (여러 번 실행해도 됨)
+└── check-rls.sh          # anon 키로 막혀야 할 것/열려야 할 것 점검
 ```
 
 ## 라우트
@@ -40,11 +44,21 @@ src/
 - `/e/:eventId/created` 생성 완료 (투표 링크·관리 링크 복사)
 - `/e/:eventId` 참여자 투표
 - `/e/:eventId/admin?key=관리키` 운영진 화면 (현재는 키 확인 + 응답자 명단만, 결과·확정은 4주차)
+- `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
 
 ## 데이터 구조
+DB (supabase/schema.sql)
+- `events`: id(8자), name, description, dates date[], start_time, end_time, slot_minutes, created_at
+- `event_admin_keys`: event_id, admin_key(16자) — anon이 절대 읽을 수 없음
+- `responses`: event_id, name, slots text[], updated_at, unique(event_id, name)
+- 세 테이블 모두 RLS on + 정책 없음 + anon 권한 revoke. 접근은 RPC만:
+  `create_event` → {id, admin_key} / `get_event` → 행사+응답 (관리키 없음) / `save_response` (upsert, 슬롯 검증) / `get_admin_event(id, key)` → 키가 틀리면 null
+- 새 RPC 추가 시: security definer + `set search_path = ''`, `revoke execute ... from public, anon, authenticated` 후 `grant ... to anon`. pgcrypto는 `extensions.` 접두사
+
+화면이 쓰는 모양 (EventStore가 snake_case → camelCase로 변환)
 ```js
 event = {
-  id, adminKey, name, description,
+  id, name, description,
   dates: ["2026-10-07", ...],          // 정렬된 ISO 날짜
   startTime: "18:00", endTime: "22:00", // endTime은 슬롯에 포함되지 않음, "24:00" 가능
   slotMinutes: 30,
@@ -54,9 +68,14 @@ event = {
 ```
 - 응답 슬롯 키는 `"YYYY-MM-DDTHH:mm"` 형식 (utils/time.js의 `slotKey`)
 - 같은 이름으로 다시 응답하면 기존 응답을 덮어씀 (이름이 응답 식별자)
+- 관리키는 event 객체에 없다. 만든 기기의 localStorage(`moimkok:adminKeys`)에만 저장되고 다시 받아올 수 없다
 
 ## 구조 약속
-- 화면 컴포넌트는 `useEvent`, `useEventStore` 훅으로만 데이터에 접근한다. DB 연동 시 EventStore의 `createEvent`, `saveResponse` 안쪽만 교체하고 화면 코드는 최대한 그대로 둔다.
+- 화면 컴포넌트는 EventStore 훅으로만 데이터에 접근하고, supabase 클라이언트를 직접 import하지 않는다.
+  - `useEvent(id)` / `useAdminEvent(id, key)` → `{ event, status, reload }`, status는 `loading | ready | notFound | error` (+ 관리 화면 `badKey`)
+  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답. 둘 다 async이고 실패하면 `StoreError`를 던진다
+  - 화면은 불러오는 중(EventSkeleton)·실패(LoadError + 다시 시도)·저장 중(버튼 비활성화)·저장 실패(입력 유지) 상태를 반드시 처리한다
+- 입력 검증은 프론트와 DB(check 제약·RPC) 양쪽에서 한다. 규칙을 바꾸면 둘 다 고친다.
 - 날짜·시간 계산과 표시 형식은 utils/time.js에 모은다. 날짜는 로컬 시간 기준 `parseISODate` / `toISODate`를 쓰고 `new Date("2026-10-07")`처럼 UTC로 해석되는 방식은 쓰지 않는다.
 - TimeGrid 드래그는 Pointer Events + `elementFromPoint` 방식. 처음 누른 칸 상태로 칠하기/지우기 모드가 정해지고, 시작 칸~현재 칸 직사각형에 적용된다. 셀에는 `touch-action: none`이 걸려 있어 그리드 위에서는 페이지 스크롤이 막힌다.
 
@@ -81,7 +100,7 @@ event = {
 ## 진행 상황
 - [x] 1주차: 주제 선정, 기획
 - [x] 2주차: 행사 생성 + 투표 화면 (메모리 상태, 새로고침 시 데이터 사라짐)
-- [ ] 3주차: Supabase 연동, 실제 링크 공유
+- [x] 3주차: Supabase 연동, 실제 링크 공유 (RPC 전용 접근, 관리키 분리)
 - [ ] 4주차: 결과 집계 화면 (히트맵, 최다 겹침, 응답자 명단, 일정 확정)
 - [ ] 5주차: Claude API 공지문 생성 (Vercel Functions)
 - [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
