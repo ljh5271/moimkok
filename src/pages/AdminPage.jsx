@@ -1,23 +1,26 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import EventSummary from '../components/EventSummary.jsx'
+import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
 import { btnSecondary, card } from '../components/styles.js'
-import { useEvent } from '../store/EventStore.jsx'
+import { useAdminEvent } from '../store/EventStore.jsx'
 import NotFoundPage from './NotFoundPage.jsx'
 
 // 결과 히트맵·일정 확정은 다음 단계에서 이 화면에 추가한다. 지금은 링크 형식과 키 확인만.
 export default function AdminPage() {
   const { eventId } = useParams()
   const [params] = useSearchParams()
-  const event = useEvent(eventId)
+  const { event, status, reload } = useAdminEvent(eventId, params.get('key'))
 
-  if (!event) return <NotFoundPage kind="event" />
+  if (status === 'notFound') return <NotFoundPage kind="event" />
+  if (status === 'error') return <LoadError onRetry={reload} />
+  if (status === 'loading') return <div className="pt-4"><EventSkeleton /></div>
 
-  if (params.get('key') !== event.adminKey) {
+  if (status === 'badKey') {
     return (
       <section className="pt-16">
         <h1 className="text-2xl font-extrabold tracking-tight">관리 링크가 올바르지 않아요</h1>
         <p className="mt-3 leading-relaxed text-ink-soft">행사를 만들 때 받은 관리 링크 전체를 그대로 열어 주세요.</p>
-        <Link to={`/e/${event.id}`} className={`${btnSecondary} mt-8`}>
+        <Link to={`/e/${eventId}`} className={`${btnSecondary} mt-8`}>
           투표 화면으로 가기
         </Link>
       </section>

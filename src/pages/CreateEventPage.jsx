@@ -26,13 +26,16 @@ export default function CreateEventPage() {
   const [dates, setDates] = useState([])
   const [range, setRange] = useState({ start: '18:00', end: '22:00' })
   const [submitted, setSubmitted] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   const errors = validate({ name, dates, range })
   const show = (key) => submitted && errors[key]
   const slotCount = errors.time ? 0 : buildTimeSlots(range.start, range.end).length
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
+    if (creating) return
     setSubmitted(true)
     if (Object.keys(errors).length > 0) {
       // 첫 번째 오류 위치로 이동
@@ -40,14 +43,22 @@ export default function CreateEventPage() {
       document.getElementById(`field-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
-    const event = createEvent({
-      name: name.trim(),
-      description: description.trim(),
-      dates,
-      startTime: range.start,
-      endTime: range.end,
-    })
-    navigate(`/e/${event.id}/created`)
+    setCreating(true)
+    setCreateError('')
+    try {
+      const { event } = await createEvent({
+        name: name.trim(),
+        description: description.trim(),
+        dates,
+        startTime: range.start,
+        endTime: range.end,
+      })
+      navigate(`/e/${event.id}/created`)
+    } catch {
+      // 입력값은 그대로 두고 다시 시도할 수 있게 한다
+      setCreateError('행사를 만들지 못했어요. 잠시 후 다시 시도하세요.')
+      setCreating(false)
+    }
   }
 
   return (
@@ -127,9 +138,12 @@ export default function CreateEventPage() {
         </div>
       </div>
 
-      <button type="submit" className={`${btnPrimary} mt-10 w-full`}>
-        투표 링크 만들기
+      <button type="submit" disabled={creating} className={`${btnPrimary} mt-10 w-full`}>
+        {creating ? '만드는 중…' : '투표 링크 만들기'}
       </button>
+      <p className={createError ? errorText : 'sr-only'} role="alert">
+        {createError}
+      </p>
     </form>
   )
 }

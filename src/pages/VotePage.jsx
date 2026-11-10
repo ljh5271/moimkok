@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import EventSummary from '../components/EventSummary.jsx'
+import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
 import TimeGrid from '../components/TimeGrid.jsx'
 import { btnPrimary, btnSecondary, errorText, input } from '../components/styles.js'
 import { useEvent, useEventStore } from '../store/EventStore.jsx'
@@ -17,17 +18,19 @@ function hoursText(slotCount, slotMinutes) {
 
 export default function VotePage() {
   const { eventId } = useParams()
-  const event = useEvent(eventId)
+  const { event, status: loadStatus, reload } = useEvent(eventId)
   const { saveResponse } = useEventStore()
 
   const [nameInput, setNameInput] = useState('')
   const [nameError, setNameError] = useState('')
   const [voter, setVoter] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
-  // idle: 아직 저장 안 함 / dirty: 저장 후 수정함 / saved: 저장 완료
+  // idle: 아직 저장 안 함 / dirty: 저장 후 수정함 / saving: 저장 중 / saved: 저장 완료 / error: 저장 실패
   const [status, setStatus] = useState('idle')
 
-  if (!event) return <NotFoundPage kind="event" />
+  if (loadStatus === 'notFound') return <NotFoundPage kind="event" />
+  if (loadStatus === 'error') return <LoadError onRetry={reload} />
+  if (loadStatus === 'loading') return <div className="pt-4"><EventSkeleton /></div>
 
   const times = buildTimeSlots(event.startTime, event.endTime, event.slotMinutes)
 
@@ -56,15 +59,26 @@ export default function VotePage() {
     setStatus((s) => (s === 'idle' ? 'idle' : 'dirty'))
   }
 
-  function handleSave() {
-    saveResponse(event.id, voter, selected)
-    setStatus('saved')
+  async function handleSave() {
+    if (status === 'saving') return
+    setStatus('saving')
+    try {
+      await saveResponse(event.id, voter, selected)
+      setStatus('saved')
+    } catch {
+      // 칠한 칸은 그대로 두고 다시 저장할 수 있게 한다
+      setStatus('error')
+    }
   }
+
+  const saving = status === 'saving'
 
   const statusText = {
     idle: '가능한 시간을 칠한 뒤 저장하세요.',
     dirty: '바뀐 내용이 있어요. 다시 저장하세요.',
+    saving: '저장하는 중이에요.',
     saved: '저장했어요. 수정하려면 칠한 뒤 다시 저장하세요.',
+    error: '저장하지 못했어요. 다시 저장하세요.',
   }[status]
 
   return (
@@ -112,6 +126,7 @@ export default function VotePage() {
             <button
               type="button"
               onClick={handleChangeName}
+              disabled={saving}
               className="rounded text-sm font-semibold text-ink-soft underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ink"
             >
               이름 바꾸기
@@ -130,7 +145,7 @@ export default function VotePage() {
           endTime={event.endTime}
           selected={selected}
           onChange={handleGridChange}
-          disabled={voter === null}
+          disabled={voter === null || saving}
         />
       </div>
 
@@ -141,17 +156,17 @@ export default function VotePage() {
               <p className="font-bold">
                 {selected.size === 0 ? '선택 없음' : `${hoursText(selected.size, event.slotMinutes)} 선택`}
               </p>
-              <p className="text-sm text-ink-soft" aria-live="polite">
+              <p className={`text-sm ${status === 'error' ? 'font-semibold text-sun' : 'text-ink-soft'}`} aria-live="polite">
                 {statusText}
               </p>
             </div>
             <button
               type="button"
               onClick={handleSave}
-              disabled={status === 'saved'}
+              disabled={status === 'saved' || saving}
               className={status === 'saved' ? `${btnSecondary} shrink-0 opacity-70` : `${btnPrimary} shrink-0`}
             >
-              {status === 'saved' ? '저장됨' : '저장하기'}
+              {status === 'saved' ? '저장됨' : saving ? '저장하는 중…' : '저장하기'}
             </button>
           </div>
         </div>

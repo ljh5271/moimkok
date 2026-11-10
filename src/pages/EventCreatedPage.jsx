@@ -1,19 +1,24 @@
 import { Link, useParams } from 'react-router-dom'
 import CopyLinkBox from '../components/CopyLinkBox.jsx'
 import EventSummary from '../components/EventSummary.jsx'
+import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
 import { btnPrimary, card } from '../components/styles.js'
 import { useEvent } from '../store/EventStore.jsx'
+import { getAdminKey } from '../utils/adminKeys.js'
 import NotFoundPage from './NotFoundPage.jsx'
 
 export default function EventCreatedPage() {
   const { eventId } = useParams()
-  const event = useEvent(eventId)
+  const { event, status, reload } = useEvent(eventId)
 
-  if (!event) return <NotFoundPage kind="event" />
+  if (status === 'notFound') return <NotFoundPage kind="event" />
+  if (status === 'error') return <LoadError onRetry={reload} />
 
   const origin = window.location.origin
-  const voteUrl = `${origin}/e/${event.id}`
-  const adminUrl = `${origin}/e/${event.id}/admin?key=${event.adminKey}`
+  const voteUrl = `${origin}/e/${eventId}`
+  // 관리키는 서버에서 다시 받아올 수 없다. 만든 기기의 localStorage에만 있다.
+  const adminKey = getAdminKey(eventId)
+  const adminUrl = adminKey ? `${origin}/e/${eventId}/admin?key=${adminKey}` : null
 
   return (
     <section className="pt-4">
@@ -21,26 +26,35 @@ export default function EventCreatedPage() {
         행사를 만들었어요
       </p>
 
-      <div className={card}>
-        <EventSummary event={event} />
-      </div>
+      {status === 'loading' ? (
+        <EventSkeleton />
+      ) : (
+        <div className={card}>
+          <EventSummary event={event} />
+        </div>
+      )}
 
       <div className="mt-6 space-y-3">
         <CopyLinkBox title="투표 링크" help="단톡방에 올려서 멤버들에게 보내세요." url={voteUrl} />
-        <CopyLinkBox
-          title="관리 링크"
-          help="결과를 보고 일정을 확정할 때 써요. 운영진끼리만 보관하세요."
-          url={adminUrl}
-        />
+        {adminUrl ? (
+          <CopyLinkBox
+            title="관리 링크"
+            help="결과를 보고 일정을 확정할 때 써요. 운영진끼리만 보관하세요. 잃어버리면 다시 볼 수 없어요."
+            url={adminUrl}
+          />
+        ) : (
+          <div className="rounded-2xl border border-line bg-white p-5">
+            <p className="font-bold">관리 링크</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+              관리 링크는 행사를 만든 기기에서만 볼 수 있어요. 그때 복사해 둔 링크를 사용하세요.
+            </p>
+          </div>
+        )}
       </div>
 
-      <Link to={`/e/${event.id}`} className={`${btnPrimary} mt-8 w-full`}>
+      <Link to={`/e/${eventId}`} className={`${btnPrimary} mt-8 w-full`}>
         투표 화면 열기
       </Link>
-
-      <p className="mt-6 text-sm leading-relaxed text-ink-soft">
-        지금은 저장 기능이 없는 테스트 버전이라, 새로고침하면 행사가 사라지고 다른 기기에서는 링크가 열리지 않아요.
-      </p>
     </section>
   )
 }
