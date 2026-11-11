@@ -92,3 +92,23 @@ export function recommendRanges(result, limit = 3) {
   }
   return picked
 }
+
+/**
+ * 내가 고른 칸들을 날짜별 연속 구간으로 묶는다.
+ * ["2026-12-04T19:00", "2026-12-04T19:30", "2026-12-05T18:00"]
+ *   → [{ date: "2026-12-04", startTime: "19:00", endTime: "20:00" }, { date: "2026-12-05", startTime: "18:00", endTime: "18:30" }]
+ */
+export function groupSlots(slots, slotMinutes = 30) {
+  const ranges = []
+  for (const key of [...slots].sort()) {
+    const date = key.slice(0, 10)
+    const start = toMinutes(key.slice(11, 16))
+    const last = ranges[ranges.length - 1]
+    if (last && last.date === date && toMinutes(last.endTime) === start) {
+      last.endTime = fromMinutes(start + slotMinutes)
+    } else {
+      ranges.push({ date, startTime: fromMinutes(start), endTime: fromMinutes(start + slotMinutes) })
+    }
+  }
+  return ranges
+}

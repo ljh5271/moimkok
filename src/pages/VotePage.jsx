@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ConfirmedBanner from '../components/ConfirmedBanner.jsx'
 import EventSummary from '../components/EventSummary.jsx'
 import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
@@ -7,6 +7,7 @@ import TimeGrid from '../components/TimeGrid.jsx'
 import BottomCTA from '../components/BottomCTA.jsx'
 import { btnGhost, btnPrimary, btnSecondary, card, errorText, input, sectionTitle } from '../components/styles.js'
 import { useEvent, useEventStore } from '../store/EventStore.jsx'
+import { getMyEvent, lastVoterName } from '../utils/myEvents.js'
 import { buildTimeSlots, formatDuration } from '../utils/time.js'
 import NotFoundPage from './NotFoundPage.jsx'
 
@@ -15,19 +16,42 @@ export default function VotePage() {
   const { eventId } = useParams()
   const { event, status: loadStatus, reload } = useEvent(eventId)
   const { saveResponse } = useEventStore()
+  const location = useLocation()
+  const navigate = useNavigate()
 
-  const [nameInput, setNameInput] = useState('')
+  // 이름 미리 채우기: "수정하기"로 온 이름 → 이 모임에서 쓴 이름 → 이 기기에서 최근에 쓴 이름
+  const [nameInput, setNameInput] = useState(
+    () => location.state?.name ?? getMyEvent(eventId)?.voterName ?? lastVoterName(),
+  )
   const [nameError, setNameError] = useState('')
   const [voter, setVoter] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
   // idle: 아직 저장 안 함 / dirty: 저장 후 수정함 / saving: 저장 중 / saved: 저장 완료 / error: 저장 실패
   const [status, setStatus] = useState('idle')
 
+  // "수정하기"로 들어오면 이름 입력을 건너뛰고 바로 기존 응답을 불러온다
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current || loadStatus !== 'ready' || !location.state?.edit || !location.state?.name) return
+    autoStarted.current = true
+    startAs(location.state.name)
+    // startAs는 매 렌더마다 새로 만들어지지만 한 번만 실행하므로 의존성에서 뺀다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadStatus, location.state])
+
   if (loadStatus === 'notFound') return <NotFoundPage kind="event" />
   if (loadStatus === 'error') return <LoadError onRetry={reload} />
   if (loadStatus === 'loading') return <div className="pt-6"><EventSkeleton /></div>
 
   const times = buildTimeSlots(event.startTime, event.endTime, event.slotMinutes)
+
+  function startAs(name) {
+    const existing = event.responses.find((r) => r.name === name)
+    setSelected(new Set(existing?.slots ?? []))
+    setStatus(existing ? 'saved' : 'idle')
+    setNameError('')
+    setVoter(name)
+  }
 
   function handleStart(e) {
     e.preventDefault()
@@ -36,11 +60,7 @@ export default function VotePage() {
       setNameError('이름을 입력해 주세요.')
       return
     }
-    const existing = event.responses.find((r) => r.name === name)
-    setSelected(new Set(existing?.slots ?? []))
-    setStatus(existing ? 'saved' : 'idle')
-    setNameError('')
-    setVoter(name)
+    startAs(name)
   }
 
   function handleChangeName() {
@@ -59,7 +79,7 @@ export default function VotePage() {
     setStatus('saving')
     try {
       await saveResponse(event.id, voter, selected)
-      setStatus('saved')
+      navigate(`/e/${event.id}/done`, { state: { name: voter } })
     } catch {
       // 칠한 칸은 그대로 두고 다시 저장할 수 있게 한다
       setStatus('error')

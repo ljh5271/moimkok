@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { rememberAdminKey } from '../utils/adminKeys.js'
+import { getAdminKey, rememberAdminKey } from '../utils/adminKeys.js'
+import { forgetEvent, listMyEvents, rememberEvent } from '../utils/myEvents.js'
 
 /*
  * 데이터 저장소. 실제 데이터는 Supabase에 있고, 여기 reducer는 "불러온 행사 캐시" 역할만 한다.
@@ -84,6 +85,9 @@ function reducer(state, action) {
 
 export function EventStoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, { events: {} })
+  // 콜백 안에서 최신 캐시를 읽기 위한 참조 (모임 이름을 '내 모임'에 기억할 때 씀)
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   /** 행사 만들기 → { event, adminKey }. 실패하면 StoreError를 던진다. */
   const createEvent = useCallback(async ({ name, description, dates, startTime, endTime }) => {
@@ -109,6 +113,7 @@ export function EventStoreProvider({ children }) {
     }
     dispatch({ type: 'PUT_EVENT', event })
     rememberAdminKey(data.id, data.admin_key)
+    rememberEvent(data.id, { name: event.name, created: true })
     return { event, adminKey: data.admin_key }
   }, [])
 
@@ -117,6 +122,8 @@ export function EventStoreProvider({ children }) {
     const data = await rpc('save_response', { p_event_id: eventId, p_name: name, p_slots: [...slots] })
     const response = toResponse(data)
     dispatch({ type: 'PUT_RESPONSE', eventId, response })
+    const eventName = stateRef.current.events[eventId]?.name
+    rememberEvent(eventId, { voterName: response.name, ...(eventName ? { name: eventName } : {}) })
     return response
   }, [])
 
@@ -263,4 +270,46 @@ export function useAdminEvent(eventId, adminKey) {
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
   const status = result.key === resultKey ? result.status : 'loading'
   return { event: status === 'ready' ? (state.events[eventId] ?? null) : null, status, reload }
+}
+
+/**
+ * 홈의 "내 모임" 목록. 이 기기에서 만들거나 투표한 모임을 서버에서 다시 불러온다.
+ * → { items, status: 'loading' | 'ready' }
+ *   items: [{ id, name, voterName, created, adminKey, event: event | null, status: 'loading' | 'ready' | 'error' }]
+ * 서버에서 지워진 모임(notFound)은 목록과 기기 기억에서 함께 뺀다.
+ */
+export function useMyEvents() {
+  const { state, fetchEvent } = useEventStore()
+  const [saved] = useState(() => listMyEvents())
+  const [statuses, setStatuses] = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    for (const item of saved) {
+      fetchEvent(item.id)
+        .then((event) => {
+          if (cancelled) return
+          if (!event) forgetEvent(item.id)
+          setStatuses((s) => ({ ...s, [item.id]: event ? 'ready' : 'notFound' }))
+        })
+        .catch(() => !cancelled && setStatuses((s) => ({ ...s, [item.id]: 'error' })))
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [saved, fetchEvent])
+
+  const items = saved
+    .filter((item) => statuses[item.id] !== 'notFound')
+    .map((item) => {
+      const event = state.events[item.id] ?? null
+      return {
+        ...item,
+        adminKey: item.created ? getAdminKey(item.id) : null,
+        event,
+        status: event ? 'ready' : (statuses[item.id] ?? 'loading'),
+      }
+    })
+
+  return { items, status: saved.every((i) => statuses[i.id]) ? 'ready' : 'loading' }
 }

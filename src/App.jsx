@@ -3,6 +3,7 @@ import HomePage from './pages/HomePage.jsx'
 import CreateEventPage from './pages/CreateEventPage.jsx'
 import EventCreatedPage from './pages/EventCreatedPage.jsx'
 import VotePage from './pages/VotePage.jsx'
+import VoteDonePage from './pages/VoteDonePage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/new" element={<CreateEventPage />} />
         <Route path="/e/:eventId/created" element={<EventCreatedPage />} />
         <Route path="/e/:eventId/admin" element={<AdminPage />} />
+        <Route path="/e/:eventId/done" element={<VoteDonePage />} />
         <Route path="/e/:eventId" element={<VotePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
