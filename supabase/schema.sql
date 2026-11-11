@@ -76,6 +76,26 @@ create table if not exists public.responses (
   unique (event_id, name)
 );
 
+-- 4주차: 일정 확정. 네 열이 모두 비어 있거나 모두 채워져 있어야 한다.
+-- add column if not exists라서 이미 실행한 DB에 다시 실행해도 된다.
+alter table public.events
+  add column if not exists confirmed_date date,
+  add column if not exists confirmed_start text,
+  add column if not exists confirmed_end text,
+  add column if not exists confirmed_at timestamptz;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'events_confirmed_shape') then
+    alter table public.events add constraint events_confirmed_shape check (
+      (confirmed_date is null and confirmed_start is null and confirmed_end is null and confirmed_at is null)
+      or (confirmed_date is not null and confirmed_start is not null and confirmed_end is not null and confirmed_at is not null
+          and confirmed_start < confirmed_end)
+    );
+  end if;
+end;
+$$;
+
 alter table public.events enable row level security;
 alter table public.event_admin_keys enable row level security;
 alter table public.responses enable row level security;
@@ -101,6 +121,12 @@ as $$
     'end_time', e.end_time,
     'slot_minutes', e.slot_minutes,
     'created_at', e.created_at,
+    'confirmed', case when e.confirmed_date is null then null else jsonb_build_object(
+      'date', e.confirmed_date,
+      'start_time', e.confirmed_start,
+      'end_time', e.confirmed_end,
+      'confirmed_at', e.confirmed_at
+    ) end,
     'responses', coalesce(
       (select jsonb_agg(
                 jsonb_build_object('name', r.name, 'slots', to_jsonb(r.slots), 'updated_at', r.updated_at)
@@ -244,7 +270,6 @@ $$;
 
 -- ─────────────────────────────────────────────
 -- RPC: 운영진 화면 → 관리키가 맞을 때만 행사 jsonb, 아니면 null
--- (4주차 confirm_event도 같은 방식으로 추가)
 -- ─────────────────────────────────────────────
 create or replace function public.get_admin_event(p_event_id text, p_admin_key text)
 returns jsonb
@@ -260,6 +285,87 @@ as $$
 $$;
 
 -- ─────────────────────────────────────────────
+-- RPC: 일정 확정 → 관리키가 맞으면 행사 jsonb, 틀리면 null
+-- 날짜는 후보 날짜 중 하나, 시각은 행사 시간대 안에서 30분 단위여야 한다.
+-- 다시 호출하면 확정 내용을 바꾼다.
+-- ─────────────────────────────────────────────
+create or replace function public.confirm_event(
+  p_event_id text,
+  p_admin_key text,
+  p_date date,
+  p_start_time text,
+  p_end_time text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  e public.events;
+  v_start int;
+  v_end int;
+begin
+  -- 관리키가 맞을 때만 행을 잠그고 가져온다
+  select ev.* into e
+    from public.events ev
+    join public.event_admin_keys k on k.event_id = ev.id
+   where ev.id = p_event_id and k.admin_key = p_admin_key
+   for update of ev;
+  if not found then
+    return null;
+  end if;
+
+  if p_start_time is null or p_end_time is null
+     or p_start_time !~ '^([01][0-9]|2[0-3]):(00|30)$'
+     or p_end_time !~ '^(([01][0-9]|2[0-3]):(00|30)|24:00)$' then
+    raise exception '시각 형식이 올바르지 않아요.' using errcode = '22023';
+  end if;
+  if p_date is null or not (p_date = any (e.dates)) then
+    raise exception '후보 날짜 중에서 골라야 해요.' using errcode = '22023';
+  end if;
+
+  v_start := private.to_minutes(p_start_time);
+  v_end := private.to_minutes(p_end_time);
+  if v_start >= v_end
+     or v_start < private.to_minutes(e.start_time)
+     or v_end > private.to_minutes(e.end_time) then
+    raise exception '행사 시간대 안에서 골라야 해요.' using errcode = '22023';
+  end if;
+
+  update public.events
+     set confirmed_date = p_date,
+         confirmed_start = p_start_time,
+         confirmed_end = p_end_time,
+         confirmed_at = now()
+   where id = e.id;
+
+  return private.event_json(e.id);
+end;
+$$;
+
+-- ─────────────────────────────────────────────
+-- RPC: 확정 취소 → 관리키가 맞으면 행사 jsonb, 틀리면 null
+-- ─────────────────────────────────────────────
+create or replace function public.cancel_confirm(p_event_id text, p_admin_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.events ev
+     set confirmed_date = null, confirmed_start = null, confirmed_end = null, confirmed_at = null
+    from public.event_admin_keys k
+   where ev.id = p_event_id and k.event_id = ev.id and k.admin_key = p_admin_key;
+  if not found then
+    return null;
+  end if;
+  return private.event_json(p_event_id);
+end;
+$$;
+
+-- ─────────────────────────────────────────────
 -- 실행 권한: PUBLIC과 Supabase 기본 권한을 먼저 회수하고 anon에만 준다
 -- ─────────────────────────────────────────────
 revoke execute on function private.random_id(int), private.to_minutes(text), private.event_json(text)
@@ -269,12 +375,19 @@ revoke execute on function
   public.create_event(text, text, date[], text, text),
   public.get_event(text),
   public.save_response(text, text, text[]),
-  public.get_admin_event(text, text)
+  public.get_admin_event(text, text),
+  public.confirm_event(text, text, date, text, text),
+  public.cancel_confirm(text, text)
   from public, anon, authenticated;
 
 grant execute on function
   public.create_event(text, text, date[], text, text),
   public.get_event(text),
   public.save_response(text, text, text[]),
-  public.get_admin_event(text, text)
+  public.get_admin_event(text, text),
+  public.confirm_event(text, text, date, text, text),
+  public.cancel_confirm(text, text)
   to anon;
+
+-- API 서버(PostgREST)가 새 함수를 바로 인식하도록 함수 목록을 새로고침한다
+notify pgrst, 'reload schema';

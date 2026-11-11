@@ -49,7 +49,21 @@ c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/get_admin_event" -d "{\"p_event_id\"
 body=$(cat /tmp/moim_body)
 if [ "$c" = 200 ] && [ "$body" = "null" ]; then echo "  통과  틀린 관리키 → null"; pass=$((pass+1)); else echo "  실패  틀린 관리키 ($c) $body"; fail=$((fail+1)); fi
 
-echo "4) 범위 밖 슬롯은 거절돼야 해요"
+echo "4) 일정 확정은 관리키가 있어야 해요"
+c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/confirm_event" \
+  -d "{\"p_event_id\":\"$ID\",\"p_admin_key\":\"wrongwrongwrong1\",\"p_date\":\"$TOMORROW\",\"p_start_time\":\"18:00\",\"p_end_time\":\"18:30\"}")
+body=$(cat /tmp/moim_body)
+if [ "$c" = 200 ] && [ "$body" = "null" ]; then echo "  통과  틀린 관리키로 확정 → null"; pass=$((pass+1)); else echo "  실패  틀린 관리키로 확정 ($c) $body"; fail=$((fail+1)); fi
+c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/confirm_event" \
+  -d "{\"p_event_id\":\"$ID\",\"p_admin_key\":\"$ADMIN\",\"p_date\":\"$TOMORROW\",\"p_start_time\":\"18:00\",\"p_end_time\":\"18:30\"}")
+check "맞는 관리키로 확정" ok "$c" "$(cat /tmp/moim_body)"
+c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/get_event" -d "{\"p_event_id\":\"$ID\"}")
+if grep -q '"confirmed": *{' /tmp/moim_body || grep -q '"confirmed":{' /tmp/moim_body; then echo "  통과  참여자 화면에서 확정 정보 보임"; pass=$((pass+1)); else echo "  실패  확정 정보가 안 보여요 $(cat /tmp/moim_body)"; fail=$((fail+1)); fi
+c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/cancel_confirm" -d "{\"p_event_id\":\"$ID\",\"p_admin_key\":\"wrongwrongwrong1\"}")
+body=$(cat /tmp/moim_body)
+if [ "$c" = 200 ] && [ "$body" = "null" ]; then echo "  통과  틀린 관리키로 확정 취소 → null"; pass=$((pass+1)); else echo "  실패  틀린 관리키로 확정 취소 ($c) $body"; fail=$((fail+1)); fi
+
+echo "5) 범위 밖 슬롯은 거절돼야 해요"
 c=$(req "${H[@]}" -X POST "$URL/rest/v1/rpc/save_response" \
   -d "{\"p_event_id\":\"$ID\",\"p_name\":\"점검\",\"p_slots\":[\"${TOMORROW}T23:00\"]}")
 if [ "$c" != 200 ]; then echo "  통과  범위 밖 슬롯 거절 ($c)"; pass=$((pass+1)); else echo "  실패  범위 밖 슬롯이 저장됐어요"; fail=$((fail+1)); fi
