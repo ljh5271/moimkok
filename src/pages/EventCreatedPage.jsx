@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import CopyLinkBox from '../components/CopyLinkBox.jsx'
 import EventSummary from '../components/EventSummary.jsx'
+import NoticeComposer from '../components/NoticeComposer.jsx'
 import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
 import BottomCTA from '../components/BottomCTA.jsx'
 import { btnPrimary, btnSecondary, card, pageTitle } from '../components/styles.js'
@@ -26,20 +27,32 @@ export default function EventCreatedPage() {
       <h1 className={pageTitle}>
         모임을 만들었어요
         <br />
-        이제 링크를 보내 주세요
+        단톡방에 올려 주세요
       </h1>
 
       <div className="mt-8 space-y-3">
         {status === 'loading' ? (
           <EventSkeleton />
         ) : (
-          <div className={card}>
-            <EventSummary event={event} headingLevel="h2" />
-          </div>
+          <>
+            <div className={card}>
+              <EventSummary event={event} headingLevel="h2" />
+            </div>
+            <NoticeComposer
+              event={event}
+              adminKey={adminKey}
+              kind="invite"
+              link={voteUrl}
+              autoGenerate
+              title="단톡방에 올릴 글"
+              description="투표를 부탁하는 글을 써 드려요. 글 끝에 투표 링크가 붙어 있어서 그대로 올리면 돼요."
+              extraPlaceholder="투표 마감: 금요일 밤 10시까지"
+            />
+          </>
         )}
 
         <div className={`${card} space-y-6`}>
-          <CopyLinkBox title="투표 링크" help="단톡방에 올려서 멤버들에게 보내요." url={voteUrl} />
+          <CopyLinkBox title="투표 링크" help="링크만 따로 보낼 때 써요." url={voteUrl} />
           <div className="h-px bg-line" />
           {adminUrl ? (
             <CopyLinkBox

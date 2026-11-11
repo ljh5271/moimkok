@@ -119,7 +119,17 @@ export default function AdminPage() {
           </ConfirmedBanner>
         )}
 
-        {c && <NoticeComposer eventId={event.id} adminKey={adminKey} />}
+        {c && (
+          <NoticeComposer
+            key={`${c.date}-${c.startTime}-${c.endTime}`}
+            event={event}
+            adminKey={adminKey}
+            kind="confirm"
+            title="확정 공지 쓰기"
+            description="확정된 일정과 응답 현황으로 단톡방에 올릴 글을 써 드려요. 안 되는 사람 이름은 넣지 않아요."
+            extraPlaceholder={'장소: 학생회관 302호\n회비: 1만 원'}
+          />
+        )}
 
         {/* 응답자 */}
         <section className={card} aria-labelledby="respondents-title">

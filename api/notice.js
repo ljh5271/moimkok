@@ -1,6 +1,6 @@
 // Vercel 서버리스 함수: POST /api/notice
-// 본문: { eventId, adminKey, tone: 'regular' | 'event' | 'official', extra?: string }
-// 응답: 200 { notice, stats: { total, yes } } / 4xx·5xx { code, message }
+// 본문: { eventId, adminKey, kind?: 'invite' | 'confirm', tone: 'regular' | 'event' | 'official', extra?: string }
+// 응답: 200 { notice, stats: { total, yes } | null } / 4xx·5xx { code, message }
 import { createNotice } from './_lib/notice.js'
 
 export default async function handler(req, res) {

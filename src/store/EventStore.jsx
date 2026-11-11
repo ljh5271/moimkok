@@ -168,17 +168,18 @@ export function EventStoreProvider({ children }) {
   }, [])
 
   /**
-   * 공지문 초안 만들기 (서버 함수 /api/notice → Claude). 확정된 일정이 있어야 한다.
-   * → { notice, stats: { total, yes } }. 실패하면 StoreError
+   * 단톡방 글 초안 만들기 (서버 함수 /api/notice → Claude).
+   * kind: 'invite'(투표 요청 글) | 'confirm'(확정 공지, 확정된 일정이 있어야 함)
+   * → { notice, stats }. 실패하면 StoreError
    *   code: 'notConfigured' | 'notConfirmed' | 'badKey' | 'invalid' | 'network'
    */
-  const generateNotice = useCallback(async (eventId, adminKey, { tone, extra }) => {
+  const generateNotice = useCallback(async (eventId, adminKey, { kind = 'confirm', tone, extra }) => {
     let res
     try {
       res = await fetch('/api/notice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, adminKey: adminKey ?? '', tone, extra }),
+        body: JSON.stringify({ eventId, adminKey: adminKey ?? '', kind, tone, extra }),
       })
     } catch {
       throw new StoreError('네트워크 오류', 'network')
