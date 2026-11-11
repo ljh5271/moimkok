@@ -16,7 +16,9 @@
 2. 참여자: 로그인 없이 이름 입력 후 가능한 시간 칸 드래그 체크
 3. 결과: 시간대별 가능 인원 히트맵, 최다 겹침 시간 하이라이트, 응답자 명단
 4. 운영진이 최종 일정 확정
-5. 공지문 생성 (톤: 정기모임 / MT·행사 / 공식 공지), 복사 버튼
+5. 단톡방 글 자동 작성 (톤: 정기모임 / MT·행사 / 공식 공지), 복사·공유 버튼
+   - 모임을 만들면 생성 완료 화면에서 투표 요청 글을 자동으로 쓰고 글 끝에 투표 링크를 붙인다 (invite)
+   - 일정을 확정하면 관리 화면에서 확정 공지를 쓴다 (confirm, 응답 현황 포함)
 
 ## 명령어
 - `npm run dev` 개발 서버 (vite.config.js의 플러그인이 `/api/notice`도 같이 띄운다. Vercel CLI 필요 없음)
@@ -33,7 +35,8 @@ src/
 ├── pages/                # Home(내 모임), CreateEvent, EventCreated, Vote, VoteDone(저장 완료), Admin, NotFound
 ├── components/           # DatePicker, TimeRangeSelect, TimeGrid, ResultGrid(히트맵), ConfirmedBanner, NoticeComposer,
 │                         # BottomCTA(하단 고정 버튼), EventSummary, CopyLinkBox, LoadState, styles.js
-└── utils/                # time.js, results.js(집계·추천·groupSlots), clipboard.js, adminKeys.js(관리키), myEvents.js(내 모임) — 둘 다 localStorage
+└── utils/                # time.js, results.js(집계·추천·groupSlots), noticeTemplate.js(AI 없을 때 기본 문구), clipboard.js,
+                          # adminKeys.js(관리키), myEvents.js(내 모임) — 둘 다 localStorage
 api/
 ├── notice.js             # Vercel 서버리스 함수 POST /api/notice
 └── _lib/notice.js        # 공지문 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출). 개발 서버도 이 파일을 쓴다
@@ -45,10 +48,10 @@ supabase/
 ## 라우트
 - `/` 홈: 이 기기의 "내 모임" 목록 (없으면 사용 안내)
 - `/new` 행사 생성
-- `/e/:eventId/created` 생성 완료 (투표 링크·관리 링크 복사)
+- `/e/:eventId/created` 생성 완료: 투표 요청 글 자동 작성(링크 포함) + 투표 링크·관리 링크 복사
 - `/e/:eventId` 참여자 투표 → 저장하면 `/e/:eventId/done`(저장 완료: 내가 고른 시간, 수정하기·홈으로)
 - `/e/:eventId/admin?key=관리키` 운영진 화면: 응답자 명단, 추천 시간 TOP 3, 히트맵 범위 선택, 일정 확정·변경·취소
-- `POST /api/notice` { eventId, adminKey, tone: regular|event|official, extra? } → { notice, stats: { total, yes } }
+- `POST /api/notice` { eventId, adminKey, kind: invite|confirm (기본 confirm), tone: regular|event|official, extra? } → { notice, stats: { total, yes } | null }
 - `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
 
 ## 데이터 구조
@@ -96,6 +99,8 @@ event = {
   - 날짜·시각과 응답 현황은 서버가 DB에서 계산해 프롬프트에 넣는다. 브라우저가 보낸 값을 믿지 않는다
   - 안 되는 사람 이름은 프롬프트에 넣지 않는다. 운영진이 쓴 추가 내용은 `<추가내용>` 태그 안에 데이터로만 넣는다
   - Claude 오류 원문은 서버 로그에만 남기고 브라우저에는 code·message만 보낸다
+  - **링크는 AI에게 주지 않는다.** 투표 링크는 화면(NoticeComposer)이 글 끝에 붙이고, 서버는 AI 응답에 섞인 URL을 지운다
+  - AI를 못 쓰면(키 없음·오류·관리키 없는 기기) utils/noticeTemplate.js의 기본 문구로 채우고 화면에 그 사실을 알린다
   - 모델은 `ANTHROPIC_MODEL`(기본 claude-haiku-5-5). `MOIMKOK_CLAUDE_BASE_URL`은 자동 테스트에서 가짜 서버로 보낼 때만 쓴다
 - TimeGrid 드래그는 Pointer Events + `elementFromPoint` 방식. 처음 누른 칸 상태로 칠하기/지우기 모드가 정해지고, 시작 칸~현재 칸 직사각형에 적용된다. 셀에는 `touch-action: none`이 걸려 있어 그리드 위에서는 페이지 스크롤이 막힌다.
 
@@ -129,6 +134,7 @@ event = {
 - [x] 4주차: 결과 집계 화면 (히트맵, 추천 시간, 응답자 명단, 히트맵 범위 선택으로 일정 확정·변경·취소)
 - [x] 5주차: Claude API 공지문 생성 (Vercel Functions, 응답 현황 포함) + 토스 스타일 디자인 개편
 - [x] 5주차 추가: 투표 저장 완료 화면, 홈 "내 모임" 목록, 투표 이름 미리 채우기
+- [x] 5주차 추가: 모임 생성 직후 투표 요청 글 자동 작성(링크 포함, 공유 버튼)
 - [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
 - [ ] 7주차: 동아리·학생회 실사용 테스트
 - [ ] 8주차: 피드백 반영, 발표 준비
