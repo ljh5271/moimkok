@@ -1,20 +1,14 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import ConfirmedBanner from '../components/ConfirmedBanner.jsx'
 import EventSummary from '../components/EventSummary.jsx'
 import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
 import TimeGrid from '../components/TimeGrid.jsx'
 import { btnPrimary, btnSecondary, errorText, input } from '../components/styles.js'
 import { useEvent, useEventStore } from '../store/EventStore.jsx'
-import { buildTimeSlots } from '../utils/time.js'
+import { buildTimeSlots, formatDuration } from '../utils/time.js'
 import NotFoundPage from './NotFoundPage.jsx'
 
-function hoursText(slotCount, slotMinutes) {
-  const minutes = slotCount * slotMinutes
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}분`
-  return m === 0 ? `${h}시간` : `${h}시간 ${m}분`
-}
 
 export default function VotePage() {
   const { eventId } = useParams()
@@ -85,6 +79,13 @@ export default function VotePage() {
     <section className="pt-4">
       <EventSummary event={event} />
       <p className="mt-3 text-sm text-ink-soft">지금까지 {event.responses.length}명 응답</p>
+      {event.confirmed && (
+        <div className="mt-4">
+          <ConfirmedBanner confirmed={event.confirmed}>
+            <p className="mt-2 text-sm text-ink-soft">투표는 계속할 수 있지만 운영진이 이미 일정을 정했어요.</p>
+          </ConfirmedBanner>
+        </div>
+      )}
 
       <div className="mt-8">
         {voter === null ? (
@@ -154,7 +155,7 @@ export default function VotePage() {
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="font-bold">
-                {selected.size === 0 ? '선택 없음' : `${hoursText(selected.size, event.slotMinutes)} 선택`}
+                {selected.size === 0 ? '선택 없음' : `${formatDuration(selected.size * event.slotMinutes)} 선택`}
               </p>
               <p className={`text-sm ${status === 'error' ? 'font-semibold text-sun' : 'text-ink-soft'}`} aria-live="polite">
                 {statusText}

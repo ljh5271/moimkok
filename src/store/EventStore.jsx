@@ -11,6 +11,7 @@ import { rememberAdminKey } from '../utils/adminKeys.js'
  *   id, name, description,
  *   dates: ["2026-10-07", ...], startTime: "18:00", endTime: "22:00", slotMinutes: 30,
  *   responses: [{ name, slots: ["2026-10-07T18:00", ...], updatedAt }],
+ *   confirmed: { date: "2026-10-07", startTime: "19:00", endTime: "21:00", confirmedAt } | null,
  *   createdAt,
  * }
  */
@@ -20,6 +21,11 @@ const EventStoreContext = createContext(null)
 // ── DB ↔ 화면 변환 ─────────────────────────────
 function toResponse(row) {
   return { name: row.name, slots: row.slots ?? [], updatedAt: row.updated_at }
+}
+
+function toConfirmed(c) {
+  if (!c) return null
+  return { date: c.date, startTime: c.start_time, endTime: c.end_time, confirmedAt: c.confirmed_at }
 }
 
 function toEvent(row) {
@@ -32,6 +38,7 @@ function toEvent(row) {
     endTime: row.end_time,
     slotMinutes: row.slot_minutes,
     createdAt: row.created_at,
+    confirmed: toConfirmed(row.confirmed),
     responses: (row.responses ?? []).map(toResponse),
   }
 }
@@ -40,7 +47,7 @@ function toEvent(row) {
 export class StoreError extends Error {
   constructor(message, code) {
     super(message)
-    this.code = code // 'config' | 'notFound' | 'invalid' | 'network'
+    this.code = code // 'config' | 'notFound' | 'invalid' | 'network' | 'badKey'
   }
 }
 
@@ -97,6 +104,7 @@ export function EventStoreProvider({ children }) {
       endTime,
       slotMinutes: 30,
       createdAt: new Date().toISOString(),
+      confirmed: null,
       responses: [],
     }
     dispatch({ type: 'PUT_EVENT', event })
@@ -128,9 +136,33 @@ export function EventStoreProvider({ children }) {
     return event
   }, [])
 
+  /** 일정 확정 (다시 부르면 변경). 관리키가 틀리면 StoreError('badKey') */
+  const confirmEvent = useCallback(async (eventId, adminKey, { date, startTime, endTime }) => {
+    const data = await rpc('confirm_event', {
+      p_event_id: eventId,
+      p_admin_key: adminKey ?? '',
+      p_date: date,
+      p_start_time: startTime,
+      p_end_time: endTime,
+    })
+    if (!data) throw new StoreError('관리키가 올바르지 않아요.', 'badKey')
+    const event = toEvent(data)
+    dispatch({ type: 'PUT_EVENT', event })
+    return event
+  }, [])
+
+  /** 확정 취소. 관리키가 틀리면 StoreError('badKey') */
+  const cancelConfirm = useCallback(async (eventId, adminKey) => {
+    const data = await rpc('cancel_confirm', { p_event_id: eventId, p_admin_key: adminKey ?? '' })
+    if (!data) throw new StoreError('관리키가 올바르지 않아요.', 'badKey')
+    const event = toEvent(data)
+    dispatch({ type: 'PUT_EVENT', event })
+    return event
+  }, [])
+
   const value = useMemo(
-    () => ({ state, createEvent, saveResponse, fetchEvent, fetchAdminEvent }),
-    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent],
+    () => ({ state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm }),
+    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm],
   )
 
   return <EventStoreContext.Provider value={value}>{children}</EventStoreContext.Provider>

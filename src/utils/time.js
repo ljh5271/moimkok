@@ -74,3 +74,16 @@ export function hourLabel(hhmm) {
   const [h, m] = hhmm.split(':').map(Number)
   return m === 0 ? `${h}시` : ''
 }
+
+/** "2026-12-04", "19:00", "21:00" → "12월 4일 (목) 오후 7시 ~ 오후 9시" */
+export function formatSlotRange(date, start, end) {
+  return `${formatDateLong(date)} ${formatTime(start)} ~ ${formatTime(end)}`
+}
+
+/** 90 → "1시간 30분" */
+export function formatDuration(minutes) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}분`
+  return m === 0 ? `${h}시간` : `${h}시간 ${m}분`
+}
