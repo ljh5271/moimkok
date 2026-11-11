@@ -17,8 +17,22 @@
 3. 결과: 시간대별 가능 인원 히트맵, 최다 겹침 시간 하이라이트, 응답자 명단
 4. 운영진이 최종 일정 확정
 5. 단톡방 글 자동 작성 (톤: 정기모임 / MT·행사 / 공식 공지), 복사·공유 버튼
-   - 모임을 만들면 생성 완료 화면에서 투표 요청 글을 자동으로 쓰고 글 끝에 투표 링크를 붙인다 (invite)
-   - 일정을 확정하면 관리 화면에서 확정 공지를 쓴다 (confirm, 응답 현황 포함)
+   - 모임을 만들면 생성 완료 화면에서 모집·투표 글을 자동으로 쓰고 글 끝에 투표 링크를 붙인다 (invite)
+   - 같은 화면에서 투표 포스터 이미지(QR코드 포함)를 만들어 저장·공유한다
+   - 일정을 확정하면 관리 화면에서 확정 공지를 쓴다 (confirm, 참석 가능 인원 포함)
+   - 글 모양(동아리 공지 형식):
+     ```
+     🐳넷트워킹 참여인원 모집🐳
+
+     (소개 1~2문장)
+
+     ▫️일시: 11/7(토), 11/8(일) 중 투표로 정해요   ← 확정 공지는 "9월 10일 목요일 19시"
+     ▫️장소: 미정
+     ▫️(더 넣을 내용 한 줄씩)
+
+     👉 되는 시간 투표하기 (로그인 없이 이름만)    ← invite만
+     https://…/e/abc12345
+     ```
 
 ## 명령어
 - `npm run dev` 개발 서버 (vite.config.js의 플러그인이 `/api/notice`도 같이 띄운다. Vercel CLI 필요 없음)
@@ -34,12 +48,12 @@ src/
 ├── store/EventStore.jsx  # RPC 호출 + 불러온 행사 캐시 (Context + useReducer)
 ├── pages/                # Home(내 모임), CreateEvent, EventCreated, Vote, VoteDone(저장 완료), Admin, NotFound
 ├── components/           # DatePicker, TimeRangeSelect, TimeGrid, ResultGrid(히트맵), ConfirmedBanner, NoticeComposer,
-│                         # BottomCTA(하단 고정 버튼), EventSummary, CopyLinkBox, LoadState, styles.js
-└── utils/                # time.js, results.js(집계·추천·groupSlots), noticeTemplate.js(AI 없을 때 기본 문구), clipboard.js,
+│                         # PosterCard, BottomCTA(하단 고정 버튼), EventSummary, CopyLinkBox, LoadState, styles.js
+└── utils/                # time.js, results.js(집계·추천·groupSlots), noticeFormat.js(공지 조립·기본 머리말), poster.js(포스터 canvas), clipboard.js,
                           # adminKeys.js(관리키), myEvents.js(내 모임) — 둘 다 localStorage
 api/
 ├── notice.js             # Vercel 서버리스 함수 POST /api/notice
-└── _lib/notice.js        # 공지문 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출). 개발 서버도 이 파일을 쓴다
+└── _lib/notice.js        # 공지 머리말 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출 → JSON 검사). 개발 서버도 이 파일을 쓴다
 supabase/
 ├── schema.sql            # 테이블·RLS·RPC. SQL Editor에서 실행 (여러 번 실행해도 됨)
 └── check-rls.sh          # anon 키로 막혀야 할 것/열려야 할 것 점검
@@ -48,10 +62,10 @@ supabase/
 ## 라우트
 - `/` 홈: 이 기기의 "내 모임" 목록 (없으면 사용 안내)
 - `/new` 행사 생성
-- `/e/:eventId/created` 생성 완료: 투표 요청 글 자동 작성(링크 포함) + 투표 링크·관리 링크 복사
+- `/e/:eventId/created` 생성 완료: 모집·투표 글 자동 작성(링크 포함) + 투표 포스터 + 투표 링크·관리 링크 복사
 - `/e/:eventId` 참여자 투표 → 저장하면 `/e/:eventId/done`(저장 완료: 내가 고른 시간, 수정하기·홈으로)
 - `/e/:eventId/admin?key=관리키` 운영진 화면: 응답자 명단, 추천 시간 TOP 3, 히트맵 범위 선택, 일정 확정·변경·취소
-- `POST /api/notice` { eventId, adminKey, kind: invite|confirm (기본 confirm), tone: regular|event|official, extra? } → { notice, stats: { total, yes } | null }
+- `POST /api/notice` { eventId, adminKey, kind: invite|confirm (기본 confirm), tone: regular|event|official, extra?, place? } → { parts: { emoji, title, intro }, stats: { total, yes } | null }
 - `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
 
 ## 데이터 구조
@@ -87,7 +101,7 @@ event = {
 - 화면 컴포넌트는 EventStore 훅으로만 데이터에 접근하고, supabase 클라이언트를 직접 import하지 않는다.
   - `useEvent(id)` / `useAdminEvent(id, key)` → `{ event, status, reload }`, status는 `loading | ready | notFound | error` (+ 관리 화면 `badKey`)
   - `useMyEvents()` → `{ items: [{ id, name, voterName, created, adminKey, event, status }] }` (홈 목록)
-  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event, `generateNotice(id, key, {tone, extra})` → `{ notice, stats }`. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`, 공지문은 `notConfigured`·`notConfirmed`도 있음)
+  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event, `generateNotice(id, key, {kind, tone, extra, place})` → `{ parts, stats }`. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`, 공지문은 `notConfigured`·`notConfirmed`도 있음)
   - 화면은 불러오는 중(EventSkeleton)·실패(LoadError + 다시 시도)·저장 중(버튼 비활성화)·저장 실패(입력 유지) 상태를 반드시 처리한다
 - 입력 검증은 프론트와 DB(check 제약·RPC) 양쪽에서 한다. 규칙을 바꾸면 둘 다 고친다.
 - 날짜·시간 계산과 표시 형식은 utils/time.js에 모은다. 날짜는 로컬 시간 기준 `parseISODate` / `toISODate`를 쓰고 `new Date("2026-10-07")`처럼 UTC로 해석되는 방식은 쓰지 않는다.
@@ -99,9 +113,11 @@ event = {
   - 날짜·시각과 응답 현황은 서버가 DB에서 계산해 프롬프트에 넣는다. 브라우저가 보낸 값을 믿지 않는다
   - 안 되는 사람 이름은 프롬프트에 넣지 않는다. 운영진이 쓴 추가 내용은 `<추가내용>` 태그 안에 데이터로만 넣는다
   - Claude 오류 원문은 서버 로그에만 남기고 브라우저에는 code·message만 보낸다
-  - **링크는 AI에게 주지 않는다.** 투표 링크는 화면(NoticeComposer)이 글 끝에 붙이고, 서버는 AI 응답에 섞인 URL을 지운다
-  - AI를 못 쓰면(키 없음·오류·관리키 없는 기기) utils/noticeTemplate.js의 기본 문구로 채우고 화면에 그 사실을 알린다
+  - **AI는 머리말(emoji·title·intro)만 JSON으로 쓴다.** ▫️정보 줄(일시·장소·더 넣을 내용·참석 가능)과 투표 링크는 utils/noticeFormat.js가 정확한 값으로 붙인다. 서버는 JSON 형식을 검사하고 섞인 URL을 지운다
+  - 장소·더 넣을 내용은 바꾸는 즉시 화면에서 다시 조립한다 (AI 재호출 없음). AI는 말투 변경·"소개 문장 다시 쓰기" 때만 부른다
+  - AI를 못 쓰면(키 없음·오류·관리키 없는 기기) noticeFormat.js의 templateParts로 채우고 화면에 그 사실을 알린다
   - 모델은 `ANTHROPIC_MODEL`(기본 claude-haiku-5-5). `MOIMKOK_CLAUDE_BASE_URL`은 자동 테스트에서 가짜 서버로 보낼 때만 쓴다
+- 포스터(utils/poster.js)는 canvas로 직접 그린다(이미지 생성 AI 아님). 1080×1350, QR코드는 `qrcode`를 그릴 때만 동적 import. 포스터 색은 canvas라 @theme 토큰 대신 POSTER_THEMES에만 둔다
 - TimeGrid 드래그는 Pointer Events + `elementFromPoint` 방식. 처음 누른 칸 상태로 칠하기/지우기 모드가 정해지고, 시작 칸~현재 칸 직사각형에 적용된다. 셀에는 `touch-action: none`이 걸려 있어 그리드 위에서는 페이지 스크롤이 막힌다.
 
 ## 디자인 규칙 (토스 앱 느낌)
@@ -135,6 +151,7 @@ event = {
 - [x] 5주차: Claude API 공지문 생성 (Vercel Functions, 응답 현황 포함) + 토스 스타일 디자인 개편
 - [x] 5주차 추가: 투표 저장 완료 화면, 홈 "내 모임" 목록, 투표 이름 미리 채우기
 - [x] 5주차 추가: 모임 생성 직후 투표 요청 글 자동 작성(링크 포함, 공유 버튼)
+- [x] 5주차 추가: 공지를 동아리 공지 형식(🐳제목🐳 + ▫️정보 줄)으로 변경, 투표 포스터 이미지(QR) 추가
 - [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
 - [ ] 7주차: 동아리·학생회 실사용 테스트
 - [ ] 8주차: 피드백 반영, 발표 준비
