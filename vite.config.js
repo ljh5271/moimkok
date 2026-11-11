@@ -3,15 +3,21 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 /**
- * 개발 서버에서도 /api/notice가 동작하게 하는 플러그인.
- * 배포(Vercel)에서는 api/notice.js가 같은 일을 한다. 둘 다 api/_lib/notice.js를 쓴다.
- * .env의 값은 서버 쪽에서만 읽고, VITE_가 없는 값(ANTHROPIC_API_KEY)은 브라우저로 가지 않는다.
+ * 개발 서버에서도 /api/notice, /api/poster가 동작하게 하는 플러그인.
+ * 배포(Vercel)에서는 api/*.js가 같은 일을 한다. 둘 다 api/_lib/*.js를 쓴다.
+ * .env의 값은 서버 쪽에서만 읽고, VITE_가 없는 값(ANTHROPIC_API_KEY, GEMINI_API_KEY)은 브라우저로 가지 않는다.
  */
+const ROUTES = {
+  '/api/notice': ['/api/_lib/notice.js', 'createNotice'],
+  '/api/poster': ['/api/_lib/poster.js', 'createPoster'],
+}
+
 function localApi(env) {
   return {
     name: 'moimkok-local-api',
     configureServer(server) {
-      server.middlewares.use('/api/notice', async (req, res) => {
+      for (const [route, [file, fn]] of Object.entries(ROUTES)) {
+      server.middlewares.use(route, async (req, res) => {
         const send = (status, body) => {
           res.statusCode = status
           res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -30,10 +36,11 @@ function localApi(env) {
         } catch {
           // createNotice가 잘못된 입력으로 처리한다
         }
-        const { createNotice } = await server.ssrLoadModule('/api/_lib/notice.js')
-        const { status, body } = await createNotice(input, env)
+        const mod = await server.ssrLoadModule(file)
+        const { status, body } = await mod[fn](input, env)
         send(status, body)
       })
+      }
     },
   }
 }

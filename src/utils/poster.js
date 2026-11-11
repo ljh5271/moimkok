@@ -188,3 +188,119 @@ export async function drawPoster({ event, parts, place, link, theme = 'blue' }) 
 
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/png'))
 }
+
+/** base64 그림 → HTMLImageElement */
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+/** 테이프 조각 (반투명 종이 테이프) */
+function tape(ctx, cx, cy, w, h, angle) {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(angle)
+  ctx.fillStyle = 'rgba(240, 226, 196, 0.85)'
+  ctx.fillRect(-w / 2, -h / 2, w, h)
+  ctx.restore()
+}
+
+/**
+ * AI가 그린 그림 위에 날짜·장소 라벨과 QR코드를 얹는다.
+ * 그림 AI에는 아래쪽 1/4을 비워 달라고 했으므로 그 자리에 놓는다.
+ * @param {{ event, image: { mimeType, data }, place, link }} opts
+ * @returns {Promise<Blob>} PNG
+ */
+export async function composeAiPoster({ event, image, place, link }) {
+  await loadFonts()
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')
+  ctx.textBaseline = 'top'
+
+  // 1) 배경 그림: 비율이 조금 달라도 꽉 차게 (가운데 기준으로 잘라 냄)
+  const img = await loadImage(`data:${image.mimeType};base64,${image.data}`)
+  const scale = Math.max(W / img.width, H / img.height)
+  const dw = img.width * scale
+  const dh = img.height * scale
+  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+
+  // 아래쪽을 살짝 어둡게 해서 라벨이 떠 보이게
+  const shade = ctx.createLinearGradient(0, H * 0.7, 0, H)
+  shade.addColorStop(0, 'rgba(0,0,0,0)')
+  shade.addColorStop(1, 'rgba(0,0,0,0.35)')
+  ctx.fillStyle = shade
+  ctx.fillRect(0, H * 0.7, W, H * 0.3)
+
+  // 2) 날짜·장소 종이 라벨 (왼쪽, 살짝 기울임)
+  const dates = event.dates.map(formatDateCompact)
+  const dateText =
+    dates.length === 1 ? `${dates[0]} 예정` : dates.length <= 3 ? `${dates.join(' · ')} 중` : `${dates[0]} ~ ${dates[dates.length - 1]} 중`
+  const labelX = 60
+  const labelY = 1040
+  const labelW = 650
+  const labelH = 232
+  ctx.save()
+  ctx.translate(labelX + labelW / 2, labelY + labelH / 2)
+  ctx.rotate(-0.025)
+  ctx.shadowColor = 'rgba(0,0,0,0.28)'
+  ctx.shadowBlur = 24
+  ctx.shadowOffsetY = 8
+  ctx.fillStyle = '#fffdf6'
+  roundRect(ctx, -labelW / 2, -labelH / 2, labelW, labelH, 18)
+  ctx.fill()
+  ctx.shadowColor = 'transparent'
+
+  const lx = -labelW / 2 + 40
+  let ly = -labelH / 2 + 34
+  ctx.fillStyle = INK_FAINT
+  ctx.font = `700 26px ${FONT}`
+  ctx.fillText(dates.length === 1 ? '일시' : '후보 날짜 (투표로 정해요)', lx, ly)
+  ly += 40
+  ctx.fillStyle = INK
+  ctx.font = `800 46px ${FONT}`
+  ctx.fillText(wrap(ctx, dateText, labelW - 80, 1)[0], lx, ly)
+  ly += 66
+  ctx.fillStyle = INK_FAINT
+  ctx.font = `700 26px ${FONT}`
+  ctx.fillText('장소', lx, ly)
+  ctx.fillStyle = INK
+  ctx.font = `700 34px ${FONT}`
+  ctx.fillText(wrap(ctx, place.trim() || '미정', labelW - 80 - 74, 1)[0], lx + 74, ly - 5)
+  ctx.restore()
+  tape(ctx, labelX + 70, labelY + 6, 120, 34, -0.35)
+  tape(ctx, labelX + labelW - 60, labelY + 2, 120, 34, 0.3)
+
+  // 3) QR 카드 (오른쪽, 반대로 살짝 기울임)
+  const qrCardW = 280
+  const qrCardH = 300
+  const qrCardX = W - 60 - qrCardW
+  const qrCardY = 1012
+  ctx.save()
+  ctx.translate(qrCardX + qrCardW / 2, qrCardY + qrCardH / 2)
+  ctx.rotate(0.03)
+  ctx.shadowColor = 'rgba(0,0,0,0.28)'
+  ctx.shadowBlur = 24
+  ctx.shadowOffsetY = 8
+  ctx.fillStyle = '#ffffff'
+  roundRect(ctx, -qrCardW / 2, -qrCardH / 2, qrCardW, qrCardH, 24)
+  ctx.fill()
+  ctx.shadowColor = 'transparent'
+  const qrSize = 220
+  const qrCanvas = document.createElement('canvas')
+  const { default: QRCode } = await import('qrcode')
+  await QRCode.toCanvas(qrCanvas, link, { width: qrSize, margin: 0, color: { dark: INK, light: '#ffffff' } })
+  ctx.drawImage(qrCanvas, -qrSize / 2, -qrCardH / 2 + 26, qrSize, qrSize)
+  ctx.fillStyle = INK
+  ctx.font = `800 26px ${FONT}`
+  ctx.textAlign = 'center'
+  ctx.fillText('QR 찍고 투표하기', 0, qrCardH / 2 - 46)
+  ctx.restore()
+
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/png'))
+}

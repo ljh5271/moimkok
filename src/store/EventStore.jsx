@@ -198,9 +198,52 @@ export function EventStoreProvider({ children }) {
     return data
   }, [])
 
+  /**
+   * AI 포스터 그림 만들기 (서버 함수 /api/poster → Gemini). 10~30초 걸린다.
+   * poster: { headline, subhead, keywords, scene } (공지 머리말의 poster 필드)
+   * → { mimeType, data(base64) }. 실패하면 StoreError
+   *   code: 'notConfigured' | 'badKey' | 'invalid' | 'model' | 'busy' | 'noImage' | 'network'
+   */
+  const generatePoster = useCallback(async (eventId, adminKey, poster) => {
+    let res
+    try {
+      res = await fetch('/api/poster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, adminKey: adminKey ?? '', ...poster }),
+      })
+    } catch {
+      throw new StoreError('네트워크 오류', 'network')
+    }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const code =
+        {
+          not_configured: 'notConfigured',
+          bad_key: 'badKey',
+          invalid: 'invalid',
+          model: 'model',
+          busy: 'busy',
+          no_image: 'noImage',
+        }[data.code] ?? 'network'
+      throw new StoreError(data.message ?? '포스터를 그리지 못했어요.', code)
+    }
+    return data
+  }, [])
+
   const value = useMemo(
-    () => ({ state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm, generateNotice }),
-    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm, generateNotice],
+    () => ({
+      state,
+      createEvent,
+      saveResponse,
+      fetchEvent,
+      fetchAdminEvent,
+      confirmEvent,
+      cancelConfirm,
+      generateNotice,
+      generatePoster,
+    }),
+    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm, generateNotice, generatePoster],
   )
 
   return <EventStoreContext.Provider value={value}>{children}</EventStoreContext.Provider>

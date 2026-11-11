@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/poster.js": { "maxDuration": 60 },
+    "api/notice.js": { "maxDuration": 30 }
+  },
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+}

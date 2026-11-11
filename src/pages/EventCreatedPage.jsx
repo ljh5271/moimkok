@@ -53,7 +53,9 @@ export default function EventCreatedPage() {
               extraPlaceholder="투표 마감: 금요일 밤 10시까지"
               onPartsChange={setPoster}
             />
-            {poster && <PosterCard event={event} parts={poster.parts} place={poster.place} link={voteUrl} />}
+            {poster && (
+              <PosterCard event={event} parts={poster.parts} place={poster.place} link={voteUrl} adminKey={adminKey} />
+            )}
           </>
         )}
 

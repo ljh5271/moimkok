@@ -40,6 +40,11 @@ export function confirmedStats(event) {
   return { total: result.names.length, yes }
 }
 
+/** 포스터 문구 기본값 (AI 머리말에 poster가 없을 때) */
+export function templatePoster(event) {
+  return { headline: event.name.slice(0, 10), subhead: '함께 일정을 정해요', keywords: [], scene: '' }
+}
+
 /** AI를 쓸 수 없을 때의 머리말 */
 export function templateParts(event, kind, tone) {
   const emoji = pickEmoji(event.id)
@@ -51,7 +56,7 @@ export function templateParts(event, kind, tone) {
       event: `${about}되는 시간을 쭉 칠해 주세요! 가장 많이 되는 날로 바로 정할게요!`,
       official: `${about}${event.name} 일정을 정하기 위해 가능한 시간을 조사합니다. 많은 참여 바랍니다.`,
     }[tone]
-    return { emoji, title, intro }
+    return { emoji, title, intro, poster: templatePoster(event) }
   }
   const intro = {
     regular: `${about}${event.name} 일정이 정해졌어요! 많은 참여 부탁드려요!`,
