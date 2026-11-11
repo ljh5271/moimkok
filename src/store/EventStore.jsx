@@ -47,7 +47,7 @@ function toEvent(row) {
 export class StoreError extends Error {
   constructor(message, code) {
     super(message)
-    this.code = code // 'config' | 'notFound' | 'invalid' | 'network' | 'badKey'
+    this.code = code // 'config' | 'notFound' | 'invalid' | 'network' | 'badKey' | 'notConfigured' | 'notConfirmed'
   }
 }
 
@@ -160,9 +160,39 @@ export function EventStoreProvider({ children }) {
     return event
   }, [])
 
+  /**
+   * 공지문 초안 만들기 (서버 함수 /api/notice → Claude). 확정된 일정이 있어야 한다.
+   * → { notice, stats: { total, yes } }. 실패하면 StoreError
+   *   code: 'notConfigured' | 'notConfirmed' | 'badKey' | 'invalid' | 'network'
+   */
+  const generateNotice = useCallback(async (eventId, adminKey, { tone, extra }) => {
+    let res
+    try {
+      res = await fetch('/api/notice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, adminKey: adminKey ?? '', tone, extra }),
+      })
+    } catch {
+      throw new StoreError('네트워크 오류', 'network')
+    }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const code =
+        {
+          not_configured: 'notConfigured',
+          not_confirmed: 'notConfirmed',
+          bad_key: 'badKey',
+          invalid: 'invalid',
+        }[data.code] ?? 'network'
+      throw new StoreError(data.message ?? '공지문을 만들지 못했어요.', code)
+    }
+    return data
+  }, [])
+
   const value = useMemo(
-    () => ({ state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm }),
-    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm],
+    () => ({ state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm, generateNotice }),
+    [state, createEvent, saveResponse, fetchEvent, fetchAdminEvent, confirmEvent, cancelConfirm, generateNotice],
   )
 
   return <EventStoreContext.Provider value={value}>{children}</EventStoreContext.Provider>

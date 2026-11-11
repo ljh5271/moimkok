@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import BottomCTA from '../components/BottomCTA.jsx'
 import ConfirmedBanner from '../components/ConfirmedBanner.jsx'
 import EventSummary from '../components/EventSummary.jsx'
 import { EventSkeleton, LoadError } from '../components/LoadState.jsx'
+import NoticeComposer from '../components/NoticeComposer.jsx'
 import ResultGrid, { HeatLegend } from '../components/ResultGrid.jsx'
-import { btnPrimary, btnSecondary, card } from '../components/styles.js'
+import { btnPrimary, btnSecondary, card, pageTitle, sectionTitle } from '../components/styles.js'
 import { useAdminEvent, useEventStore } from '../store/EventStore.jsx'
 import { availableForRange, rangeToTimes, recommendRanges, tally } from '../utils/results.js'
-import { formatDuration, formatSlotRange } from '../utils/time.js'
+import { formatDateLong, formatDuration, formatSlotRange, formatTimeRange } from '../utils/time.js'
 import NotFoundPage from './NotFoundPage.jsx'
 
 export default function AdminPage() {
@@ -27,13 +29,13 @@ export default function AdminPage() {
 
   if (status === 'notFound') return <NotFoundPage kind="event" />
   if (status === 'error') return <LoadError onRetry={reload} />
-  if (status === 'loading') return <div className="pt-4"><EventSkeleton /></div>
+  if (status === 'loading') return <div className="pt-6"><EventSkeleton /></div>
 
   if (status === 'badKey') {
     return (
       <section className="pt-16">
-        <h1 className="text-2xl font-extrabold tracking-tight">관리 링크가 올바르지 않아요</h1>
-        <p className="mt-3 leading-relaxed text-ink-soft">행사를 만들 때 받은 관리 링크 전체를 그대로 열어 주세요.</p>
+        <h1 className={pageTitle}>관리 링크가 올바르지 않아요</h1>
+        <p className="mt-3 text-[17px] leading-relaxed text-ink-soft">모임을 만들 때 받은 관리 링크 전체를 그대로 열어 주세요.</p>
         <Link to={`/e/${eventId}`} className={`${btnSecondary} mt-8`}>
           투표 화면으로 가기
         </Link>
@@ -71,9 +73,11 @@ export default function AdminPage() {
     try {
       await confirmEvent(event.id, adminKey, picked)
       setAction('idle')
+      setSelection(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch {
       setAction('error')
-      setActionError('확정하지 못했어요. 다시 시도하세요.')
+      setActionError('확정하지 못했어요. 다시 시도해 주세요.')
     }
   }
 
@@ -86,148 +90,173 @@ export default function AdminPage() {
       setAction('idle')
     } catch {
       setAction('error')
-      setActionError('확정을 취소하지 못했어요. 다시 시도하세요.')
+      setActionError('확정을 취소하지 못했어요. 다시 시도해 주세요.')
     }
   }
 
   return (
-    <section className="pt-4">
-      <div className={card}>
-        <EventSummary event={event} />
-      </div>
+    <section className={`pt-6 ${picked ? 'pb-44' : 'pb-16'}`}>
+      <div className="space-y-3">
+        <div className={card}>
+          <EventSummary event={event} />
+        </div>
 
-      {c && (
-        <div className="mt-4">
+        {c && (
           <ConfirmedBanner confirmed={c}>
             <button
               type="button"
               onClick={handleCancel}
               disabled={busy}
-              className="mt-3 rounded text-sm font-semibold text-ink-soft underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ink disabled:opacity-50"
+              className="mt-4 h-9 rounded-xl bg-white/15 px-3.5 text-[14px] font-semibold text-white transition active:bg-white/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-50"
             >
               {action === 'canceling' ? '취소하는 중…' : '확정 취소하기'}
             </button>
+            {action === 'error' && !picked && (
+              <p className="mt-2 text-[14px] font-medium text-white" role="alert">
+                {actionError}
+              </p>
+            )}
           </ConfirmedBanner>
-        </div>
-      )}
+        )}
 
-      {/* 응답자 */}
-      <h2 className="mt-8 font-bold">응답한 사람 {total}명</h2>
-      {total === 0 ? (
-        <p className="mt-2 leading-relaxed text-ink-soft">
-          아직 응답이 없어요. 투표 링크를 단톡방에 공유해 보세요.
-        </p>
-      ) : (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {result.names.map((name) => (
-            <li key={name} className="rounded-full border border-line bg-white px-3 py-1 text-sm font-semibold">
-              {name}
-            </li>
-          ))}
-        </ul>
-      )}
+        {c && <NoticeComposer eventId={event.id} adminKey={adminKey} />}
 
-      {/* 추천 시간 */}
-      {recommendations.length > 0 && (
-        <>
-          <h2 className="mt-8 font-bold">많이 겹치는 시간</h2>
-          <p className="mt-1 text-sm text-ink-soft">구간 내내 가능한 사람이 많은 순서예요. 누르면 아래 표에서 선택돼요.</p>
-          <ol className="mt-3 space-y-2">
-            {recommendations.map((r) => {
-              const { startTime, endTime } = rangeToTimes(result, event.slotMinutes, r.t0, r.t1)
-              const active = selection && selection.d === r.d && selection.t0 === r.t0 && selection.t1 === r.t1
-              return (
-                <li key={`${r.d}-${r.t0}-${r.t1}`}>
-                  <button
-                    type="button"
-                    onClick={() => pick({ d: r.d, t0: r.t0, t1: r.t1 })}
-                    aria-pressed={Boolean(active)}
-                    className={`w-full rounded-2xl border bg-white p-4 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
-                      active ? 'border-ink ring-2 ring-ink' : 'border-line hover:border-ink-soft'
-                    }`}
-                  >
-                    <span className="block font-bold">{formatSlotRange(event.dates[r.d], startTime, endTime)}</span>
-                    <span className="mt-1 block text-sm text-ink-soft">
-                      {total}명 중 <strong className="text-ink">{r.count}명</strong> 가능 ·{' '}
-                      {formatDuration((r.t1 - r.t0 + 1) * event.slotMinutes)}
-                    </span>
-                  </button>
+        {/* 응답자 */}
+        <section className={card} aria-labelledby="respondents-title">
+          <h2 id="respondents-title" className={sectionTitle}>
+            응답한 사람 <span className="text-primary">{total}</span>명
+          </h2>
+          {total === 0 ? (
+            <p className="mt-1 text-[15px] leading-relaxed text-ink-faint">
+              아직 응답이 없어요. 투표 링크를 단톡방에 보내 보세요.
+            </p>
+          ) : (
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {result.names.map((name) => (
+                <li key={name} className="rounded-full bg-paper px-3 py-1.5 text-[14px] font-medium text-ink-soft">
+                  {name}
                 </li>
-              )
-            })}
-          </ol>
-        </>
-      )}
+              ))}
+            </ul>
+          )}
+        </section>
 
-      {/* 히트맵 */}
-      <h2 className="mt-8 font-bold">시간별 가능 인원</h2>
-      <p className="mt-1 mb-3 text-sm text-ink-soft">칸을 누르거나, 누른 채 위아래로 끌어서 확정할 시간을 고르세요.</p>
-      <div className="mb-3">
-        <HeatLegend total={total} />
-      </div>
-      <ResultGrid
-        dates={event.dates}
-        times={result.times}
-        endTime={event.endTime}
-        result={result}
-        selection={selection}
-        onSelect={pick}
-      />
+        {/* 추천 시간 */}
+        {recommendations.length > 0 && (
+          <section className={card} aria-labelledby="recs-title">
+            <h2 id="recs-title" className={sectionTitle}>
+              많이 겹치는 시간
+            </h2>
+            <p className="mt-1 text-[15px] text-ink-faint">구간 내내 되는 사람이 많은 순서예요.</p>
+            <ol className="mt-4 -mx-2">
+              {recommendations.map((r, i) => {
+                const { startTime, endTime } = rangeToTimes(result, event.slotMinutes, r.t0, r.t1)
+                const active = selection && selection.d === r.d && selection.t0 === r.t0 && selection.t1 === r.t1
+                return (
+                  <li key={`${r.d}-${r.t0}-${r.t1}`}>
+                    <button
+                      type="button"
+                      onClick={() => pick({ d: r.d, t0: r.t0, t1: r.t1 })}
+                      aria-pressed={Boolean(active)}
+                      className={`flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-primary ${
+                        active ? 'bg-primary-weak' : 'active:bg-paper'
+                      }`}
+                    >
+                      <span
+                        className={`grid size-8 shrink-0 place-items-center rounded-full text-[14px] font-bold ${
+                          active ? 'bg-primary text-white' : 'bg-paper text-ink-faint'
+                        }`}
+                        aria-hidden
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[16px] font-semibold">{formatDateLong(event.dates[r.d])}</span>
+                        <span className="mt-0.5 block text-[14px] text-ink-faint">
+                          {formatTimeRange(startTime, endTime)} · {formatDuration((r.t1 - r.t0 + 1) * event.slotMinutes)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[17px] font-bold text-primary">{r.count}명</span>
+                        <span className="block text-[12px] text-ink-faint">{total}명 중</span>
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+          </section>
+        )}
 
-      {/* 선택한 시간 상세 */}
-      {picked && (
-        <div className={`${card} mt-4`} aria-live="polite">
-          <p className="font-bold">{formatSlotRange(picked.date, picked.startTime, picked.endTime)}</p>
-          <p className="mt-1 text-sm text-ink-soft">
-            {formatDuration(picked.minutes)} · 구간 내내 가능한 사람 {picked.yes.length}명
-          </p>
-          {total > 0 && (
-            <dl className="mt-4 space-y-3 text-sm">
+        {/* 히트맵 */}
+        <section className={card} aria-labelledby="heat-title">
+          <h2 id="heat-title" className={sectionTitle}>
+            시간별로 보기
+          </h2>
+          <p className="mt-1 mb-4 text-[15px] text-ink-faint">칸을 누르거나 누른 채 위아래로 끌어서 시간을 골라요.</p>
+          <div className="mb-3">
+            <HeatLegend total={total} />
+          </div>
+          <ResultGrid
+            dates={event.dates}
+            times={result.times}
+            endTime={event.endTime}
+            result={result}
+            selection={selection}
+            onSelect={pick}
+          />
+
+          {picked && total > 0 && (
+            <dl className="mt-5 space-y-4 rounded-2xl bg-paper p-4 text-[15px]" aria-live="polite">
               <div>
-                <dt className="font-bold">가능 {picked.yes.length}명</dt>
-                <dd className="mt-1 text-ink-soft">{picked.yes.length ? picked.yes.join(', ') : '없음'}</dd>
+                <dt className="font-semibold">
+                  되는 사람 <span className="text-primary">{picked.yes.length}</span>명
+                </dt>
+                <dd className="mt-1 text-ink-soft">{picked.yes.length ? picked.yes.join(', ') : '없어요'}</dd>
               </div>
               <div>
-                <dt className="font-bold">불가 또는 일부만 가능 {no.length}명</dt>
-                <dd className="mt-1 text-ink-soft">{no.length ? no.join(', ') : '없음'}</dd>
+                <dt className="font-semibold">안 되거나 일부만 되는 사람 {no.length}명</dt>
+                <dd className="mt-1 text-ink-soft">{no.length ? no.join(', ') : '없어요'}</dd>
               </div>
             </dl>
           )}
-        </div>
-      )}
+        </section>
+      </div>
 
-      {/* 확정 바 */}
-      <div className="sticky bottom-0 -mx-4 mt-6 border-t border-line bg-paper/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-bold">
-              {picked ? formatSlotRange(picked.date, picked.startTime, picked.endTime) : '시간을 고르세요'}
-            </p>
-            <p
-              className={`text-sm ${action === 'error' ? 'font-semibold text-sun' : 'text-ink-soft'}`}
-              aria-live="polite"
-            >
-              {action === 'error'
-                ? actionError
-                : pickedIsConfirmed
-                  ? '지금 확정된 시간이에요.'
-                  : c
-                    ? '확정하면 기존 일정이 바뀌어요.'
-                    : picked
-                      ? `${total}명 중 ${picked.yes.length}명 가능`
-                      : '추천 시간을 누르거나 표에서 칸을 고르세요.'}
-            </p>
-          </div>
+      {picked && (
+        <BottomCTA
+          note={
+            <div className="px-1">
+              <p className="text-[15px] font-semibold">{formatSlotRange(picked.date, picked.startTime, picked.endTime)}</p>
+              <p
+                className={`mt-0.5 text-[13px] ${action === 'error' ? 'font-semibold text-sun' : 'text-ink-faint'}`}
+                aria-live="polite"
+              >
+                {action === 'error'
+                  ? actionError
+                  : pickedIsConfirmed
+                    ? '지금 확정된 시간이에요.'
+                    : `${formatDuration(picked.minutes)} · ${total}명 중 ${picked.yes.length}명 가능${c ? ' · 확정하면 기존 일정이 바뀌어요' : ''}`}
+              </p>
+            </div>
+          }
+        >
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={!picked || busy || pickedIsConfirmed}
-            className={`${pickedIsConfirmed ? btnSecondary : btnPrimary} shrink-0 disabled:cursor-not-allowed`}
+            disabled={busy || pickedIsConfirmed}
+            className={`${pickedIsConfirmed ? btnSecondary : btnPrimary} w-full`}
           >
-            {action === 'confirming' ? '확정하는 중…' : pickedIsConfirmed ? '확정됨' : c ? '이 시간으로 변경' : '확정하기'}
+            {action === 'confirming'
+              ? '확정하는 중…'
+              : pickedIsConfirmed
+                ? '확정된 시간이에요'
+                : c
+                  ? '이 시간으로 바꾸기'
+                  : '이 시간으로 확정하기'}
           </button>
-        </div>
-      </div>
+        </BottomCTA>
+      )}
     </section>
   )
 }
