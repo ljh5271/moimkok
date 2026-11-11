@@ -9,6 +9,7 @@
 - react-router-dom 7
 - Supabase (DB) — @supabase/supabase-js, 테이블 직접 접근 없이 RPC 함수로만 호출 (supabase/schema.sql)
 - Claude API: 반드시 서버리스 함수(Vercel Functions)에서 호출. API 키를 프론트에 노출하지 않는다.
+- Gemini 이미지 모델: AI 포스터 그림. 역시 서버리스 함수에서만 호출 (`GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL`)
 - 배포: Vercel
 
 ## 핵심 기능 (MVP)
@@ -18,7 +19,7 @@
 4. 운영진이 최종 일정 확정
 5. 단톡방 글 자동 작성 (톤: 정기모임 / MT·행사 / 공식 공지), 복사·공유 버튼
    - 모임을 만들면 생성 완료 화면에서 모집·투표 글을 자동으로 쓰고 글 끝에 투표 링크를 붙인다 (invite)
-   - 같은 화면에서 투표 포스터 이미지(QR코드 포함)를 만들어 저장·공유한다
+   - 같은 화면에서 투표 포스터를 만든다: 기본 포스터(앱이 canvas로, 무료) 또는 AI 포스터(Gemini가 배경·3D 글자·낙서·메모지를 그리고 앱이 날짜·장소 라벨과 QR을 얹음, 버튼을 누를 때만)
    - 일정을 확정하면 관리 화면에서 확정 공지를 쓴다 (confirm, 참석 가능 인원 포함)
    - 글 모양(동아리 공지 형식):
      ```
@@ -37,6 +38,7 @@
 ## 명령어
 - `npm run dev` 개발 서버 (vite.config.js의 플러그인이 `/api/notice`도 같이 띄운다. Vercel CLI 필요 없음)
 - `npm run build` 빌드 (작업 후 오류 없는지 확인용)
+- `npm run check:gemini` .env의 Gemini 키 확인 + 쓸 수 있는 이미지 모델 이름 보기
 
 ## 폴더 구조
 ```
@@ -53,7 +55,11 @@ src/
                           # adminKeys.js(관리키), myEvents.js(내 모임) — 둘 다 localStorage
 api/
 ├── notice.js             # Vercel 서버리스 함수 POST /api/notice
-└── _lib/notice.js        # 공지 머리말 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출 → JSON 검사). 개발 서버도 이 파일을 쓴다
+├── poster.js             # Vercel 서버리스 함수 POST /api/poster (최대 60초, vercel.json)
+├── _lib/notice.js        # 공지 머리말 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출 → JSON 검사). 개발 서버도 이 파일을 쓴다
+└── _lib/poster.js        # AI 포스터 로직 (관리키 확인 → Gemini 호출 → base64 그림)
+scripts/check-gemini.mjs  # Gemini 키·모델 확인
+vercel.json               # SPA rewrites(새로고침 404 방지) + 함수 실행 시간
 supabase/
 ├── schema.sql            # 테이블·RLS·RPC. SQL Editor에서 실행 (여러 번 실행해도 됨)
 └── check-rls.sh          # anon 키로 막혀야 할 것/열려야 할 것 점검
@@ -65,8 +71,9 @@ supabase/
 - `/e/:eventId/created` 생성 완료: 모집·투표 글 자동 작성(링크 포함) + 투표 포스터 + 투표 링크·관리 링크 복사
 - `/e/:eventId` 참여자 투표 → 저장하면 `/e/:eventId/done`(저장 완료: 내가 고른 시간, 수정하기·홈으로)
 - `/e/:eventId/admin?key=관리키` 운영진 화면: 응답자 명단, 추천 시간 TOP 3, 히트맵 범위 선택, 일정 확정·변경·취소
-- `POST /api/notice` { eventId, adminKey, kind: invite|confirm (기본 confirm), tone: regular|event|official, extra?, place? } → { parts: { emoji, title, intro }, stats: { total, yes } | null }
-- `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
+- `POST /api/notice` { eventId, adminKey, kind: invite|confirm (기본 confirm), tone: regular|event|official, extra?, place? } → { parts: { emoji, title, intro, poster?: { headline, subhead, keywords, scene } }, stats: { total, yes } | null }
+- `POST /api/poster` { eventId, adminKey, headline, subhead?, keywords?, scene? } → { mimeType, data(base64) }
+- `vercel.json`에 SPA rewrites가 있어서 배포 후 새로고침해도 404가 나지 않는다
 
 ## 데이터 구조
 DB (supabase/schema.sql)
@@ -101,7 +108,7 @@ event = {
 - 화면 컴포넌트는 EventStore 훅으로만 데이터에 접근하고, supabase 클라이언트를 직접 import하지 않는다.
   - `useEvent(id)` / `useAdminEvent(id, key)` → `{ event, status, reload }`, status는 `loading | ready | notFound | error` (+ 관리 화면 `badKey`)
   - `useMyEvents()` → `{ items: [{ id, name, voterName, created, adminKey, event, status }] }` (홈 목록)
-  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event, `generateNotice(id, key, {kind, tone, extra, place})` → `{ parts, stats }`. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`, 공지문은 `notConfigured`·`notConfirmed`도 있음)
+  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event, `generateNotice(id, key, {kind, tone, extra, place})` → `{ parts, stats }`, `generatePoster(id, key, {headline, subhead, keywords, scene})` → `{ mimeType, data }`. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`, 공지문은 `notConfigured`·`notConfirmed`도 있음)
   - 화면은 불러오는 중(EventSkeleton)·실패(LoadError + 다시 시도)·저장 중(버튼 비활성화)·저장 실패(입력 유지) 상태를 반드시 처리한다
 - 입력 검증은 프론트와 DB(check 제약·RPC) 양쪽에서 한다. 규칙을 바꾸면 둘 다 고친다.
 - 날짜·시간 계산과 표시 형식은 utils/time.js에 모은다. 날짜는 로컬 시간 기준 `parseISODate` / `toISODate`를 쓰고 `new Date("2026-10-07")`처럼 UTC로 해석되는 방식은 쓰지 않는다.
@@ -117,7 +124,12 @@ event = {
   - 장소·더 넣을 내용은 바꾸는 즉시 화면에서 다시 조립한다 (AI 재호출 없음). AI는 말투 변경·"소개 문장 다시 쓰기" 때만 부른다
   - AI를 못 쓰면(키 없음·오류·관리키 없는 기기) noticeFormat.js의 templateParts로 채우고 화면에 그 사실을 알린다
   - 모델은 `ANTHROPIC_MODEL`(기본 claude-haiku-5-5). `MOIMKOK_CLAUDE_BASE_URL`은 자동 테스트에서 가짜 서버로 보낼 때만 쓴다
-- 포스터(utils/poster.js)는 canvas로 직접 그린다(이미지 생성 AI 아님). 1080×1350, QR코드는 `qrcode`를 그릴 때만 동적 import. 포스터 색은 canvas라 @theme 토큰 대신 POSTER_THEMES에만 둔다
+- 포스터(utils/poster.js, 1080×1350). QR코드는 `qrcode`를 그릴 때만 동적 import. canvas라 색은 @theme 토큰 대신 이 파일 안에만 둔다
+  - 기본 포스터 `drawPoster`: 앱이 canvas로 그린다 (무료, 색 3가지 POSTER_THEMES)
+  - AI 포스터: 모집 글 머리말의 `poster`(Claude가 쓴 큰 제목·작은 문구·키워드·배경 장면) → /api/poster(Gemini) → `composeAiPoster`가 아래 1/4에 날짜·장소 종이 라벨과 QR 카드를 얹는다
+  - **그림 AI에는 날짜·장소·링크를 주지 않는다.** 프롬프트에서 아래 1/4을 비우고 숫자·URL·로고를 그리지 말라고 한다. 정확해야 하는 정보는 전부 앱이 얹는다
+  - AI 포스터는 비용이 들어서 버튼을 누를 때만 만든다. 장소를 바꾸면 그림은 그대로 두고 라벨만 다시 얹는다
+  - 사용자가 포스터 문구를 직접 고칠 수 있다 (그림 AI가 한글을 틀렸을 때)
 - TimeGrid 드래그는 Pointer Events + `elementFromPoint` 방식. 처음 누른 칸 상태로 칠하기/지우기 모드가 정해지고, 시작 칸~현재 칸 직사각형에 적용된다. 셀에는 `touch-action: none`이 걸려 있어 그리드 위에서는 페이지 스크롤이 막힌다.
 
 ## 디자인 규칙 (토스 앱 느낌)
@@ -141,7 +153,7 @@ event = {
 - 기능 하나 끝날 때마다 실행해서 확인 후 커밋, 커밋 메시지는 한국어로 간결하게
 - 큰 구조 변경 전에는 계획을 먼저 설명하고 확인받기
 - 비밀 값은 .env에 두고 .env는 커밋하지 않기 (.env.example에 키 이름만 기록)
-- 브라우저에 노출되는 값만 `VITE_` 접두사를 붙인다. `ANTHROPIC_API_KEY`에는 절대 붙이지 않는다.
+- 브라우저에 노출되는 값만 `VITE_` 접두사를 붙인다. `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`에는 절대 붙이지 않는다.
 
 ## 진행 상황
 - [x] 1주차: 주제 선정, 기획
@@ -152,6 +164,7 @@ event = {
 - [x] 5주차 추가: 투표 저장 완료 화면, 홈 "내 모임" 목록, 투표 이름 미리 채우기
 - [x] 5주차 추가: 모임 생성 직후 투표 요청 글 자동 작성(링크 포함, 공유 버튼)
 - [x] 5주차 추가: 공지를 동아리 공지 형식(🐳제목🐳 + ▫️정보 줄)으로 변경, 투표 포스터 이미지(QR) 추가
-- [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
+- [x] 5주차 추가: AI 포스터 (Gemini 그림 + 앱이 날짜·장소·QR 얹기), vercel.json 추가
+- [ ] 6주차: Vercel 배포 (환경 변수: VITE_SUPABASE_*, ANTHROPIC_API_KEY, GEMINI_API_KEY), 디자인 다듬기
 - [ ] 7주차: 동아리·학생회 실사용 테스트
 - [ ] 8주차: 피드백 반영, 발표 준비
