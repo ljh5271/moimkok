@@ -30,10 +30,10 @@ src/
 ├── index.css             # Tailwind import, @theme 색상·폰트 토큰
 ├── lib/supabase.js       # Supabase 클라이언트 (anon 키, 세션 저장 끔)
 ├── store/EventStore.jsx  # RPC 호출 + 불러온 행사 캐시 (Context + useReducer)
-├── pages/                # Home, CreateEvent, EventCreated, Vote, Admin, NotFound
+├── pages/                # Home(내 모임), CreateEvent, EventCreated, Vote, VoteDone(저장 완료), Admin, NotFound
 ├── components/           # DatePicker, TimeRangeSelect, TimeGrid, ResultGrid(히트맵), ConfirmedBanner, NoticeComposer,
 │                         # BottomCTA(하단 고정 버튼), EventSummary, CopyLinkBox, LoadState, styles.js
-└── utils/                # time.js, results.js(집계·추천), clipboard.js, adminKeys.js(관리키 localStorage)
+└── utils/                # time.js, results.js(집계·추천·groupSlots), clipboard.js, adminKeys.js(관리키), myEvents.js(내 모임) — 둘 다 localStorage
 api/
 ├── notice.js             # Vercel 서버리스 함수 POST /api/notice
 └── _lib/notice.js        # 공지문 로직 (관리키 확인 → 응답 현황 계산 → Claude 호출). 개발 서버도 이 파일을 쓴다
@@ -43,10 +43,10 @@ supabase/
 ```
 
 ## 라우트
-- `/` 메인
+- `/` 홈: 이 기기의 "내 모임" 목록 (없으면 사용 안내)
 - `/new` 행사 생성
 - `/e/:eventId/created` 생성 완료 (투표 링크·관리 링크 복사)
-- `/e/:eventId` 참여자 투표
+- `/e/:eventId` 참여자 투표 → 저장하면 `/e/:eventId/done`(저장 완료: 내가 고른 시간, 수정하기·홈으로)
 - `/e/:eventId/admin?key=관리키` 운영진 화면: 응답자 명단, 추천 시간 TOP 3, 히트맵 범위 선택, 일정 확정·변경·취소
 - `POST /api/notice` { eventId, adminKey, tone: regular|event|official, extra? } → { notice, stats: { total, yes } }
 - `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
@@ -78,10 +78,12 @@ event = {
 - 응답 슬롯 키는 `"YYYY-MM-DDTHH:mm"` 형식 (utils/time.js의 `slotKey`)
 - 같은 이름으로 다시 응답하면 기존 응답을 덮어씀 (이름이 응답 식별자)
 - 관리키는 event 객체에 없다. 만든 기기의 localStorage(`moimkok:adminKeys`)에만 저장되고 다시 받아올 수 없다
+- "내 모임"은 localStorage(`moimkok:myEvents`)에 `{ [eventId]: { name, voterName?, created?, updatedAt } }`로 기억한다. createEvent·saveResponse가 자동으로 기록하고, 서버에서 지워진 모임은 목록에서 뺀다. 로그인이 없으니 다른 기기에서는 보이지 않는다
 
 ## 구조 약속
 - 화면 컴포넌트는 EventStore 훅으로만 데이터에 접근하고, supabase 클라이언트를 직접 import하지 않는다.
   - `useEvent(id)` / `useAdminEvent(id, key)` → `{ event, status, reload }`, status는 `loading | ready | notFound | error` (+ 관리 화면 `badKey`)
+  - `useMyEvents()` → `{ items: [{ id, name, voterName, created, adminKey, event, status }] }` (홈 목록)
   - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event, `generateNotice(id, key, {tone, extra})` → `{ notice, stats }`. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`, 공지문은 `notConfigured`·`notConfirmed`도 있음)
   - 화면은 불러오는 중(EventSkeleton)·실패(LoadError + 다시 시도)·저장 중(버튼 비활성화)·저장 실패(입력 유지) 상태를 반드시 처리한다
 - 입력 검증은 프론트와 DB(check 제약·RPC) 양쪽에서 한다. 규칙을 바꾸면 둘 다 고친다.
@@ -126,6 +128,7 @@ event = {
 - [x] 3주차: Supabase 연동, 실제 링크 공유 (RPC 전용 접근, 관리키 분리)
 - [x] 4주차: 결과 집계 화면 (히트맵, 추천 시간, 응답자 명단, 히트맵 범위 선택으로 일정 확정·변경·취소)
 - [x] 5주차: Claude API 공지문 생성 (Vercel Functions, 응답 현황 포함) + 토스 스타일 디자인 개편
+- [x] 5주차 추가: 투표 저장 완료 화면, 홈 "내 모임" 목록, 투표 이름 미리 채우기
 - [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
 - [ ] 7주차: 동아리·학생회 실사용 테스트
 - [ ] 8주차: 피드백 반영, 발표 준비
