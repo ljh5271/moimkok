@@ -96,3 +96,21 @@ export function formatDuration(minutes) {
   if (h === 0) return `${m}분`
   return m === 0 ? `${h}시간` : `${h}시간 ${m}분`
 }
+
+/** "2026-11-07" → "11/7(토)" (단톡방 공지용 짧은 날짜) */
+export function formatDateCompact(iso) {
+  const { md, dow } = formatDateShort(iso)
+  return `${md}(${dow})`
+}
+
+/** "2026-09-10" → "9월 10일 목요일" */
+export function formatDateWeekday(iso) {
+  const d = parseISODate(iso)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일`
+}
+
+/** "19:00" → "19시", "19:30" → "19시 30분" (공지용 24시간 표기) */
+export function formatClock24(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number)
+  return m === 0 ? `${h}시` : `${h}시 ${m}분`
+}
