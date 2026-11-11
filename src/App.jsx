@@ -9,15 +9,15 @@ import NotFoundPage from './pages/NotFoundPage.jsx'
 function Layout() {
   return (
     <div className="min-h-dvh">
-      <header className="mx-auto flex h-14 max-w-xl items-center px-4">
-        <Link
-          to="/"
-          className="flex items-center gap-1.5 rounded text-lg font-extrabold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink"
-        >
-          {/* '콕' 찍은 점 하나가 로고 */}
-          <span aria-hidden className="size-2.5 rounded-full bg-mark ring-2 ring-mark-deep/40" />
-          모임콕
-        </Link>
+      <header className="sticky top-0 z-20 bg-paper/90 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-xl items-center px-5">
+          <Link
+            to="/"
+            className="rounded-lg text-[19px] font-extrabold tracking-[-0.03em] text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+          >
+            모임콕
+          </Link>
+        </div>
       </header>
       <main className="mx-auto max-w-xl px-4 pb-16">
         <Outlet />

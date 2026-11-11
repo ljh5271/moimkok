@@ -84,7 +84,7 @@ export default function TimeGrid({ dates, times, endTime, selected, onChange, di
 
   return (
     <div className="relative">
-      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+      <div className="-mx-2 overflow-x-auto px-2">
         <div
           role="grid"
           aria-label="가능한 시간 선택"
@@ -124,7 +124,7 @@ export default function TimeGrid({ dates, times, endTime, selected, onChange, di
               <div key={time} role="row" className="contents">
                 <div
                   role="rowheader"
-                  className="sticky left-0 z-10 bg-white pr-2 text-right text-[11px] leading-none font-semibold text-ink-soft"
+                  className="sticky left-0 z-10 bg-white pr-2 text-right text-[11px] leading-none font-medium text-ink-faint"
                 >
                   <span className="relative -top-1.5">{hourLabel(time)}</span>
                 </div>
@@ -148,7 +148,7 @@ export default function TimeGrid({ dates, times, endTime, selected, onChange, di
                         'h-7 touch-none border-l border-line focus-visible:relative focus-visible:z-20 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink',
                         onHour ? 'border-t border-t-ink/20' : 'border-t border-t-line/70',
                         isLast ? 'border-b border-b-ink/20' : '',
-                        on ? 'bg-mark' : 'bg-white',
+                        on ? 'bg-primary' : 'bg-white',
                         disabled ? 'cursor-not-allowed' : 'cursor-pointer',
                       ].join(' ')}
                     />
@@ -159,7 +159,7 @@ export default function TimeGrid({ dates, times, endTime, selected, onChange, di
           })}
 
           {/* 마지막 줄 아래 끝 시각 라벨 자리 */}
-          <div className="sticky left-0 z-10 h-4 bg-white pr-2 text-right text-[11px] leading-none font-semibold text-ink-soft">
+          <div className="sticky left-0 z-10 h-4 bg-white pr-2 text-right text-[11px] leading-none font-medium text-ink-faint">
             <span className="relative -top-1.5">{endTime ? hourLabel(endTime) : ''}</span>
           </div>
           <div style={{ gridColumn: `span ${dates.length}` }} />

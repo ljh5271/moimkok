@@ -1,4 +1,4 @@
-import { formatDateLong, formatTime } from '../utils/time.js'
+import { formatDateLong, formatTimeRange } from '../utils/time.js'
 
 export default function EventSummary({ event, headingLevel = 'h1' }) {
   const Heading = headingLevel
@@ -11,17 +11,19 @@ export default function EventSummary({ event, headingLevel = 'h1' }) {
 
   return (
     <div>
-      <Heading className="text-2xl font-extrabold tracking-tight">{event.name}</Heading>
+      <Heading className="text-[22px] leading-snug font-bold tracking-[-0.02em]">{event.name}</Heading>
       {event.description && (
-        <p className="mt-2 leading-relaxed whitespace-pre-line text-ink-soft">{event.description}</p>
+        <p className="mt-1.5 text-[15px] leading-relaxed whitespace-pre-line text-ink-soft">{event.description}</p>
       )}
-      <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-ink-soft">날짜</dt>
-        <dd className="font-semibold">{dateText}</dd>
-        <dt className="text-ink-soft">시간</dt>
-        <dd className="font-semibold">
-          {formatTime(event.startTime)} ~ {formatTime(event.endTime)}
-        </dd>
+      <dl className="mt-5 space-y-2.5 text-[15px]">
+        <div className="flex gap-4">
+          <dt className="w-10 shrink-0 text-ink-faint">날짜</dt>
+          <dd className="font-medium">{dateText}</dd>
+        </div>
+        <div className="flex gap-4">
+          <dt className="w-10 shrink-0 text-ink-faint">시간</dt>
+          <dd className="font-medium">{formatTimeRange(event.startTime, event.endTime)}</dd>
+        </div>
       </dl>
     </div>
   )

@@ -75,9 +75,18 @@ export function hourLabel(hhmm) {
   return m === 0 ? `${h}시` : ''
 }
 
-/** "2026-12-04", "19:00", "21:00" → "12월 4일 (목) 오후 7시 ~ 오후 9시" */
+/** "19:00", "21:00" → "오후 7시 ~ 9시". 오전·오후가 같으면 뒤쪽은 생략한다 */
+export function formatTimeRange(start, end) {
+  const a = formatTime(start)
+  const b = formatTime(end)
+  const [pa] = a.split(' ')
+  const [pb, ...rest] = b.split(' ')
+  return pa === pb && rest.length ? `${a} ~ ${rest.join(' ')}` : `${a} ~ ${b}`
+}
+
+/** "2026-12-04", "19:00", "21:00" → "12월 4일 (금) 오후 7시 ~ 9시" */
 export function formatSlotRange(date, start, end) {
-  return `${formatDateLong(date)} ${formatTime(start)} ~ ${formatTime(end)}`
+  return `${formatDateLong(date)} ${formatTimeRange(start, end)}`
 }
 
 /** 90 → "1시간 30분" */

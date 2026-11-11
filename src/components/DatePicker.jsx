@@ -34,11 +34,11 @@ export default function DatePicker({ value, onChange, invalid = false, described
   }
 
   const navBtn =
-    'grid size-10 place-items-center rounded-full text-xl text-ink hover:bg-paper disabled:text-line disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-ink'
+    'grid size-10 place-items-center rounded-full text-2xl text-ink-soft active:bg-paper disabled:text-line focus-visible:outline-2 focus-visible:outline-primary'
 
   return (
     <div
-      className={`rounded-2xl border bg-white p-4 ${invalid ? 'border-sun' : 'border-line'}`}
+      className={`rounded-2xl ${invalid ? 'ring-2 ring-sun' : ''}`}
       aria-describedby={describedBy}
     >
       <div className="mb-2 flex items-center justify-between">
@@ -51,7 +51,7 @@ export default function DatePicker({ value, onChange, invalid = false, described
         >
           ‹
         </button>
-        <p className="font-bold" aria-live="polite">
+        <p className="text-[17px] font-bold" aria-live="polite">
           {year}년 {month + 1}월
         </p>
         <button
@@ -64,7 +64,7 @@ export default function DatePicker({ value, onChange, invalid = false, described
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-center text-xs font-semibold text-ink-soft">
+      <div className="mb-1 grid grid-cols-7 text-center text-[13px] font-medium text-ink-faint">
         {WEEK.map((w, i) => (
           <span key={w} className={`py-1 ${i === 0 ? 'text-sun' : i === 6 ? 'text-sat' : ''}`}>
             {w}
@@ -88,17 +88,17 @@ export default function DatePicker({ value, onChange, invalid = false, described
               onClick={() => toggle(iso)}
               aria-pressed={isSelected}
               aria-label={`${md} ${dow}요일${isToday ? ', 오늘' : ''}`}
-              className={`relative grid aspect-square place-items-center rounded-lg text-[15px] transition focus-visible:outline-2 focus-visible:outline-ink ${
+              className={`relative grid aspect-square place-items-center rounded-full text-[16px] transition focus-visible:outline-2 focus-visible:outline-primary ${
                 isSelected
-                  ? 'bg-mark font-extrabold text-ink'
+                  ? 'bg-primary font-bold text-white'
                   : isPast
                     ? 'text-line'
-                    : 'font-medium hover:bg-paper'
+                    : 'font-medium text-ink active:bg-paper'
               }`}
             >
               {day}
               {isToday && (
-                <span aria-hidden className="absolute bottom-1.5 size-1 rounded-full bg-ink" />
+                <span aria-hidden className={`absolute bottom-1 size-1 rounded-full ${isSelected ? 'bg-white' : 'bg-primary'}`} />
               )}
             </button>
           )

@@ -3,7 +3,7 @@ import { formatTime, timeOptions } from '../utils/time.js'
 const OPTIONS = timeOptions()
 
 const selectClass =
-  'w-full appearance-none rounded-xl border border-line bg-white px-4 py-3 text-base font-semibold text-ink focus:border-ink focus:outline-none focus:ring-2 focus:ring-mark aria-invalid:border-sun'
+  'h-14 w-full appearance-none rounded-2xl bg-paper px-4 text-center text-[17px] font-semibold text-ink focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary aria-invalid:ring-2 aria-invalid:ring-sun'
 
 /** value: { start: "18:00", end: "22:00" } */
 export default function TimeRangeSelect({ value, onChange, invalid = false, describedBy }) {
@@ -25,7 +25,7 @@ export default function TimeRangeSelect({ value, onChange, invalid = false, desc
           ))}
         </select>
       </label>
-      <span aria-hidden className="text-ink-soft">
+      <span aria-hidden className="text-ink-faint">
         ~
       </span>
       <label className="block">

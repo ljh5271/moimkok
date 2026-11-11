@@ -4,9 +4,9 @@ import { formatSlotRange } from '../utils/time.js'
 export default function ConfirmedBanner({ confirmed, children }) {
   if (!confirmed) return null
   return (
-    <div className="rounded-2xl border-2 border-mark-deep bg-mark/30 p-5" role="status">
-      <p className="text-sm font-bold text-ink-soft">일정이 확정됐어요</p>
-      <p className="mt-1 text-lg leading-snug font-extrabold">
+    <div className="rounded-3xl bg-primary p-6 text-white" role="status">
+      <p className="text-[15px] font-medium text-white/80">일정이 확정됐어요</p>
+      <p className="mt-1 text-[21px] leading-snug font-bold tracking-[-0.02em]">
         {formatSlotRange(confirmed.date, confirmed.startTime, confirmed.endTime)}
       </p>
       {children}

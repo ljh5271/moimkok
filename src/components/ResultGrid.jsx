@@ -1,8 +1,9 @@
 import { useRef } from 'react'
 import { formatDateShort, hourLabel } from '../utils/time.js'
 
-// 가능 인원 비율 → 노란색 농도 5단계 (Tailwind가 클래스를 찾을 수 있게 전부 문자열로 적는다)
-const HEAT = ['bg-white', 'bg-mark/20', 'bg-mark/40', 'bg-mark/60', 'bg-mark/80', 'bg-mark']
+// 가능 인원 비율 → 파란색 농도 5단계 (Tailwind가 클래스를 찾을 수 있게 전부 문자열로 적는다)
+// 진한 3단계는 글자를 흰색으로 바꿔 숫자가 잘 보이게 한다
+const HEAT = ['bg-white', 'bg-primary/15', 'bg-primary/30', 'bg-primary/55 text-white', 'bg-primary/80 text-white', 'bg-primary text-white']
 
 function heatClass(count, total) {
   if (count === 0 || total === 0) return HEAT[0]
@@ -13,7 +14,7 @@ function heatClass(count, total) {
  * 결과 히트맵 + 범위 선택. 투표 그리드(TimeGrid)와 같은 모양.
  *
  * - 칸 색이 진할수록 가능 인원이 많고, 숫자로도 인원을 표시한다 (색만으로 구분하지 않기).
- * - 최다 인원 칸은 진한 노랑 테두리로 표시한다.
+ * - 최다 인원 칸은 진한 파랑 테두리로 표시한다.
  * - 칸을 누르면 한 칸, 누른 채 위아래로 끌면 같은 날짜 안에서 연속 범위를 고른다.
  *   다른 날짜 열로 끌어도 처음 누른 날짜에 고정된다.
  * - 키보드: Enter/Space로 한 칸 선택, Shift+Enter로 같은 날짜 안에서 범위 넓히기.
@@ -69,7 +70,7 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
   const columns = `3rem repeat(${dates.length}, minmax(2.75rem, 1fr))`
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+    <div className="-mx-2 overflow-x-auto px-2">
       <div
         role="grid"
         aria-label="시간대별 가능 인원"
@@ -102,7 +103,7 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
             <div key={time} role="row" className="contents">
               <div
                 role="rowheader"
-                className="sticky left-0 z-10 bg-white pr-2 text-right text-[11px] leading-none font-semibold text-ink-soft"
+                className="sticky left-0 z-10 bg-white pr-2 text-right text-[11px] leading-none font-medium text-ink-faint"
               >
                 <span className="relative -top-1.5">{hourLabel(time)}</span>
               </div>
@@ -125,7 +126,7 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
                         ? 'shadow-[inset_3px_0_0_var(--color-ink),inset_-3px_0_0_var(--color-ink),inset_0_-3px_0_var(--color-ink)]'
                         : 'shadow-[inset_3px_0_0_var(--color-ink),inset_-3px_0_0_var(--color-ink)]'
                   : isMax
-                    ? 'shadow-[inset_0_0_0_2px_var(--color-mark-deep)]'
+                    ? 'shadow-[inset_0_0_0_2px_var(--color-primary-deep)]'
                     : ''
 
                 return (
@@ -140,10 +141,11 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
                     aria-label={`${md} ${dow}요일 ${time}, ${total}명 중 ${count}명 가능${isMax ? ', 최다' : ''}`}
                     onKeyDown={(e) => handleKeyDown(e, d, t)}
                     className={[
-                      'relative h-7 cursor-pointer touch-none border-l border-line text-[11px] leading-none font-bold text-ink focus-visible:z-20 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink',
+                      'relative h-7 cursor-pointer touch-none border-l border-line text-[11px] leading-none font-bold focus-visible:z-20 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink',
                       onHour ? 'border-t border-t-ink/20' : 'border-t border-t-line/70',
                       isLast ? 'border-b border-b-ink/20' : '',
                       heatClass(count, total),
+                      count > 0 && count / total <= 0.4 ? 'text-ink' : '',
                       ring,
                     ].join(' ')}
                   >
@@ -155,7 +157,7 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
           )
         })}
 
-        <div className="sticky left-0 z-10 h-4 bg-white pr-2 text-right text-[11px] leading-none font-semibold text-ink-soft">
+        <div className="sticky left-0 z-10 h-4 bg-white pr-2 text-right text-[11px] leading-none font-medium text-ink-faint">
           <span className="relative -top-1.5">{endTime ? hourLabel(endTime) : ''}</span>
         </div>
         <div style={{ gridColumn: `span ${dates.length}` }} />
@@ -168,15 +170,15 @@ export default function ResultGrid({ dates, times, endTime, result, selection, o
 export function HeatLegend({ total }) {
   if (total === 0) return null
   return (
-    <div className="flex items-center gap-2 text-xs text-ink-soft" aria-hidden>
+    <div className="flex items-center gap-2 text-[13px] text-ink-faint" aria-hidden>
       <span>0명</span>
-      <span className="flex overflow-hidden rounded border border-line">
+      <span className="flex overflow-hidden rounded">
         {HEAT.map((c) => (
-          <span key={c} className={`h-3 w-5 ${c}`} />
+          <span key={c} className={`h-3 w-5 ${c} ${c === 'bg-white' ? 'bg-paper' : ''}`} />
         ))}
       </span>
       <span>{total}명</span>
-      <span className="ml-2 inline-block size-3 rounded-sm bg-mark shadow-[inset_0_0_0_2px_var(--color-mark-deep)]" />
+      <span className="ml-2 inline-block size-3 rounded-sm bg-primary shadow-[inset_0_0_0_2px_var(--color-primary-deep)]" />
       <span>최다</span>
     </div>
   )
