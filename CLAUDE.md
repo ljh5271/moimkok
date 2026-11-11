@@ -31,8 +31,8 @@ src/
 ├── lib/supabase.js       # Supabase 클라이언트 (anon 키, 세션 저장 끔)
 ├── store/EventStore.jsx  # RPC 호출 + 불러온 행사 캐시 (Context + useReducer)
 ├── pages/                # Home, CreateEvent, EventCreated, Vote, Admin, NotFound
-├── components/           # DatePicker, TimeRangeSelect, TimeGrid, EventSummary, CopyLinkBox, LoadState, styles.js
-└── utils/                # time.js, clipboard.js, adminKeys.js(관리키 localStorage)
+├── components/           # DatePicker, TimeRangeSelect, TimeGrid, ResultGrid(히트맵), ConfirmedBanner, EventSummary, CopyLinkBox, LoadState, styles.js
+└── utils/                # time.js, results.js(집계·추천), clipboard.js, adminKeys.js(관리키 localStorage)
 supabase/
 ├── schema.sql            # 테이블·RLS·RPC. SQL Editor에서 실행 (여러 번 실행해도 됨)
 └── check-rls.sh          # anon 키로 막혀야 할 것/열려야 할 것 점검
@@ -43,17 +43,20 @@ supabase/
 - `/new` 행사 생성
 - `/e/:eventId/created` 생성 완료 (투표 링크·관리 링크 복사)
 - `/e/:eventId` 참여자 투표
-- `/e/:eventId/admin?key=관리키` 운영진 화면 (현재는 키 확인 + 응답자 명단만, 결과·확정은 4주차)
+- `/e/:eventId/admin?key=관리키` 운영진 화면: 응답자 명단, 추천 시간 TOP 3, 히트맵 범위 선택, 일정 확정·변경·취소
 - `vercel.json` rewrites가 없으면 배포 후 새로고침 시 404 (6주차)
 
 ## 데이터 구조
 DB (supabase/schema.sql)
-- `events`: id(8자), name, description, dates date[], start_time, end_time, slot_minutes, created_at
+- `events`: id(8자), name, description, dates date[], start_time, end_time, slot_minutes, created_at,
+  confirmed_date/confirmed_start/confirmed_end/confirmed_at (확정 전에는 넷 다 null, check 제약)
 - `event_admin_keys`: event_id, admin_key(16자) — anon이 절대 읽을 수 없음
 - `responses`: event_id, name, slots text[], updated_at, unique(event_id, name)
 - 세 테이블 모두 RLS on + 정책 없음 + anon 권한 revoke. 접근은 RPC만:
-  `create_event` → {id, admin_key} / `get_event` → 행사+응답 (관리키 없음) / `save_response` (upsert, 슬롯 검증) / `get_admin_event(id, key)` → 키가 틀리면 null
+  `create_event` → {id, admin_key} / `get_event` → 행사+응답 (관리키 없음) / `save_response` (upsert, 슬롯 검증) / `get_admin_event(id, key)` → 키가 틀리면 null /
+  `confirm_event(id, key, date, start, end)` (다시 부르면 변경) · `cancel_confirm(id, key)` → 키가 틀리면 null, 범위 밖이면 오류
 - 새 RPC 추가 시: security definer + `set search_path = ''`, `revoke execute ... from public, anon, authenticated` 후 `grant ... to anon`. pgcrypto는 `extensions.` 접두사
+- 열 추가는 `add column if not exists`로 써서 schema.sql을 다시 실행해도 되게 한다. 파일 끝의 `notify pgrst, 'reload schema'`는 지우지 않는다
 
 화면이 쓰는 모양 (EventStore가 snake_case → camelCase로 변환)
 ```js
@@ -63,6 +66,7 @@ event = {
   startTime: "18:00", endTime: "22:00", // endTime은 슬롯에 포함되지 않음, "24:00" 가능
   slotMinutes: 30,
   responses: [{ name, slots: ["2026-10-07T18:00", ...], updatedAt }],
+  confirmed: { date, startTime, endTime, confirmedAt } | null, // endTime은 마지막 칸 + 30분
   createdAt,
 }
 ```
@@ -73,10 +77,13 @@ event = {
 ## 구조 약속
 - 화면 컴포넌트는 EventStore 훅으로만 데이터에 접근하고, supabase 클라이언트를 직접 import하지 않는다.
   - `useEvent(id)` / `useAdminEvent(id, key)` → `{ event, status, reload }`, status는 `loading | ready | notFound | error` (+ 관리 화면 `badKey`)
-  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답. 둘 다 async이고 실패하면 `StoreError`를 던진다
+  - `createEvent()` → `{ event, adminKey }`, `saveResponse()` → 저장된 응답, `confirmEvent(id, key, {date, startTime, endTime})` / `cancelConfirm(id, key)` → 갱신된 event. 모두 async이고 실패하면 `StoreError`를 던진다 (관리키가 틀리면 code `badKey`)
   - 화면은 불러오는 중(EventSkeleton)·실패(LoadError + 다시 시도)·저장 중(버튼 비활성화)·저장 실패(입력 유지) 상태를 반드시 처리한다
 - 입력 검증은 프론트와 DB(check 제약·RPC) 양쪽에서 한다. 규칙을 바꾸면 둘 다 고친다.
 - 날짜·시간 계산과 표시 형식은 utils/time.js에 모은다. 날짜는 로컬 시간 기준 `parseISODate` / `toISODate`를 쓰고 `new Date("2026-10-07")`처럼 UTC로 해석되는 방식은 쓰지 않는다.
+- 집계·추천 계산은 utils/results.js의 순수 함수(`tally`, `recommendRanges`, `availableForRange`, `rangeToTimes`)로 두고 화면에서는 useMemo로 부른다.
+  추천 = 구간 내내 가능한 인원이 많은 순 → 긴 순. 더 높은 순위와 겹치면서 길이도 같거나 짧은 구간은 뺀다.
+- ResultGrid 범위 선택은 처음 누른 날짜 열에 고정되고, 그 열 안에서 위아래로만 늘어난다. 칸에는 색과 함께 인원 숫자를 표시한다 (색만으로 정보 전달하지 않기).
 - TimeGrid 드래그는 Pointer Events + `elementFromPoint` 방식. 처음 누른 칸 상태로 칠하기/지우기 모드가 정해지고, 시작 칸~현재 칸 직사각형에 적용된다. 셀에는 `touch-action: none`이 걸려 있어 그리드 위에서는 페이지 스크롤이 막힌다.
 
 ## 디자인 규칙
@@ -101,7 +108,7 @@ event = {
 - [x] 1주차: 주제 선정, 기획
 - [x] 2주차: 행사 생성 + 투표 화면 (메모리 상태, 새로고침 시 데이터 사라짐)
 - [x] 3주차: Supabase 연동, 실제 링크 공유 (RPC 전용 접근, 관리키 분리)
-- [ ] 4주차: 결과 집계 화면 (히트맵, 최다 겹침, 응답자 명단, 일정 확정)
+- [x] 4주차: 결과 집계 화면 (히트맵, 추천 시간, 응답자 명단, 히트맵 범위 선택으로 일정 확정·변경·취소)
 - [ ] 5주차: Claude API 공지문 생성 (Vercel Functions)
 - [ ] 6주차: Vercel 배포 (SPA 라우팅용 vercel.json rewrites 필요), 디자인 다듬기
 - [ ] 7주차: 동아리·학생회 실사용 테스트
