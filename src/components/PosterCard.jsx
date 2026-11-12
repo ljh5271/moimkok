@@ -7,7 +7,8 @@ import { btnPrimary, btnSecondary, card, input, label, sectionTitle } from './st
 const AI_ERROR = {
   notConfigured: 'AI 포스터를 쓰려면 서버에 Gemini API 키가 필요해요. 지금은 기본 포스터를 쓸 수 있어요.',
   badKey: '관리 링크가 올바르지 않아요.',
-  busy: '요청이 많아요. 잠시 후 다시 만들어 주세요.',
+  busy: '요청이 몰렸어요. 1분쯤 뒤에 다시 만들어 주세요.',
+  quota: 'Gemini 이미지 모델은 무료로 쓸 수 없어요. Google AI Studio에서 결제를 연결해 주세요. 그동안은 기본 포스터를 쓸 수 있어요.',
   noImage: '그림이 나오지 않았어요. 다시 만들어 주세요.',
   network: 'AI 포스터를 만들지 못했어요. 잠시 후 다시 시도해 주세요.',
 }

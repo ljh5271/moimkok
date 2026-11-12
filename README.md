@@ -9,7 +9,7 @@
 2. 대시보드 **SQL Editor**에 `supabase/schema.sql` 전체를 붙여 넣고 실행한다 (기능이 추가되면 최신 파일로 다시 실행하면 된다. 기존 데이터는 그대로 남는다)
 3. `.env.example`을 `.env`로 복사하고, **Project Settings → API**의 URL과 anon(public) 키를 넣는다
 4. (공지문 기능) [Anthropic Console](https://console.anthropic.com)에서 API 키를 발급받아 `.env`의 `ANTHROPIC_API_KEY`에 넣는다. 키가 없어도 나머지 기능은 동작한다
-5. (AI 포스터) [Google AI Studio](https://aistudio.google.com/apikey)에서 API 키를 발급받아 `.env`의 `GEMINI_API_KEY`에 넣고, `npm run check:gemini`로 쓸 수 있는 이미지 모델을 확인한다. 키가 없어도 기본 포스터는 동작한다
+5. (AI 포스터) [Google AI Studio](https://aistudio.google.com/apikey)에서 API 키를 발급받아 `.env`의 `GEMINI_API_KEY`에 넣고, `npm run check:gemini`로 쓸 수 있는 이미지 모델을 확인한다. 키가 없어도 기본 포스터는 동작한다. **이미지 모델은 무료 한도가 0이라 AI Studio에서 결제(Google Cloud 결제 계정)를 연결해야 한다**
 6. 실행
 
 ```bash

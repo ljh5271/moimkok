@@ -94,43 +94,50 @@ export async function drawPoster({ event, parts, place, link, theme = 'blue' }) 
   ctx.fillRect(0, 0, W, H)
   ctx.textBaseline = 'top'
 
-  let y = PAD
-
-  // 머리 문구
+  // 머리 문구 (맨 위 고정)
   ctx.fillStyle = t.sub
   ctx.font = `600 36px ${FONT}`
-  ctx.fillText('일정 투표에 참여해 주세요', PAD, y)
-  y += 84
+  ctx.fillText('일정 투표에 참여해 주세요', PAD, PAD)
+
+  // 아래 흰 카드 위치를 먼저 정해 두고, 이모지·제목·소개는 그 사이 공간의 가운데에 놓는다
+  // (글이 짧아도 가운데가 비어 보이지 않게, 길면 소개 줄을 줄여서 카드와 겹치지 않게)
+  const cardH = 380
+  const cardY = H - PAD - cardH
+  const top = PAD + 84
+  const bottom = cardY - 48
+
+  ctx.font = `800 96px ${FONT}`
+  const titleLines = wrap(ctx, parts.title, W - PAD * 2, 3)
+  const emojiH = parts.emoji ? 176 : 0
+  const titleH = titleLines.length * 112 + 20
+  ctx.font = `500 38px ${FONT}`
+  const introMax = Math.max(0, Math.min(4, Math.floor((bottom - top - emojiH - titleH) / 56)))
+  const introLines = introMax > 0 ? wrap(ctx, parts.intro, W - PAD * 2, introMax) : []
+  const blockH = emojiH + titleH + introLines.length * 56
+  let y = top + Math.max(0, (bottom - top - blockH) / 2)
 
   // 이모지
   if (parts.emoji) {
     ctx.font = `140px ${EMOJI_FONT}`
     ctx.fillText(parts.emoji, PAD - 6, y)
-    y += 176
+    y += emojiH
   }
 
   // 제목
   ctx.fillStyle = t.fg
   ctx.font = `800 96px ${FONT}`
-  for (const line of wrap(ctx, parts.title, W - PAD * 2, 3)) {
+  for (const line of titleLines) {
     ctx.fillText(line, PAD, y)
     y += 112
   }
   y += 20
 
-  // 아래 흰 카드 위치를 먼저 정해서, 소개는 카드 위 남은 공간만큼만 쓴다 (제목이 길면 소개 줄이 줄어든다)
-  const cardH = 380
-  const cardY = H - PAD - cardH
-
   // 소개
   ctx.fillStyle = t.sub
   ctx.font = `500 38px ${FONT}`
-  const introLines = Math.min(4, Math.floor((cardY - 40 - y) / 56))
-  if (introLines > 0) {
-    for (const line of wrap(ctx, parts.intro, W - PAD * 2, introLines)) {
-      ctx.fillText(line, PAD, y)
-      y += 56
-    }
+  for (const line of introLines) {
+    ctx.fillText(line, PAD, y)
+    y += 56
   }
 
   // 아래 흰 카드: 일시·장소 + QR코드

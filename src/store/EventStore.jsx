@@ -202,7 +202,7 @@ export function EventStoreProvider({ children }) {
    * AI 포스터 그림 만들기 (서버 함수 /api/poster → Gemini). 10~30초 걸린다.
    * poster: { headline, subhead, keywords, scene } (공지 머리말의 poster 필드)
    * → { mimeType, data(base64) }. 실패하면 StoreError
-   *   code: 'notConfigured' | 'badKey' | 'invalid' | 'model' | 'busy' | 'noImage' | 'network'
+   *   code: 'notConfigured' | 'badKey' | 'invalid' | 'model' | 'quota' | 'busy' | 'noImage' | 'network'
    */
   const generatePoster = useCallback(async (eventId, adminKey, poster) => {
     let res
@@ -224,6 +224,7 @@ export function EventStoreProvider({ children }) {
           invalid: 'invalid',
           model: 'model',
           busy: 'busy',
+          quota: 'quota',
           no_image: 'noImage',
         }[data.code] ?? 'network'
       throw new StoreError(data.message ?? '포스터를 그리지 못했어요.', code)

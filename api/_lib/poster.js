@@ -94,7 +94,13 @@ export async function createPoster(input, env, fetchImpl = fetch) {
       // 오류 원문은 서버 로그에만 남긴다
       console.error('[poster] Gemini 오류', res.status, detail.slice(0, 500))
       if (res.status === 404) return fail(502, 'model', `이미지 모델(${model})을 찾을 수 없어요. GEMINI_IMAGE_MODEL을 확인해 주세요.`)
-      if (res.status === 429) return fail(429, 'busy', '요청이 많아요. 잠시 후 다시 시도해 주세요.')
+      if (res.status === 429) {
+        // 무료 한도가 0인 경우(이미지 모델은 결제를 연결해야 쓸 수 있음)와 잠깐 몰린 경우를 나눈다
+        if (/free_tier|limit: 0/.test(detail)) {
+          return fail(402, 'quota', 'Gemini 이미지 모델은 무료로 쓸 수 없어요. Google AI Studio에서 결제를 연결해 주세요.')
+        }
+        return fail(429, 'busy', '요청이 몰렸어요. 1분쯤 뒤에 다시 만들어 주세요.')
+      }
       return fail(502, 'upstream', '포스터를 그리지 못했어요.')
     }
     const data = await res.json()
